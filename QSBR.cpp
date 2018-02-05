@@ -17,7 +17,7 @@ QSBR::Context QSBR::createContext()
         m_status[context] = Status();
     } else {
         context = m_status.size();
-        m_status.push_back(Status());
+        m_status.append(Status());
     }
 
     return context;
@@ -25,7 +25,7 @@ QSBR::Context QSBR::createContext()
 
 void QSBR::destroyContext(QSBR::Context context)
 {
-    std::vector<Action> actions;
+    QVector<Action> actions;
     {
         QMutexLocker guard(&m_mutex);
         Q_ASSERT(context < m_status.size());
@@ -49,7 +49,7 @@ void QSBR::destroyContext(QSBR::Context context)
     }
 }
 
-void QSBR::onAllQuiescentStatesPassed(std::vector<Action>& actions)
+void QSBR::onAllQuiescentStatesPassed(QVector<Action>& actions)
 {
     // m_mutex must be held
     actions.swap(m_pendingActions);
@@ -63,7 +63,7 @@ void QSBR::onAllQuiescentStatesPassed(std::vector<Action>& actions)
 
 void QSBR::update(QSBR::Context context)
 {
-    std::vector<Action> actions;
+    QVector<Action> actions;
     {
         QMutexLocker guard(&m_mutex);
         Q_ASSERT(context < m_status.size());

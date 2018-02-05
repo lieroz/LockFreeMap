@@ -1,7 +1,6 @@
 #ifndef JUNCTION_DETAILS_LEAPFROG_H
 #define JUNCTION_DETAILS_LEAPFROG_H
 
-#include <Core.h>
 #include <Util.h>
 #include <MapTraits.h>
 #include <SimpleJobCoordinator.h>

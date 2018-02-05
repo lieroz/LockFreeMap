@@ -1,9 +1,7 @@
 #ifndef JUNCTION_QSBR_H
 #define JUNCTION_QSBR_H
 
-#include <vector>
-#include <string.h>
-
+#include <QVector>
 #include <QMutex>
 #include <QMutexLocker>
 
@@ -15,6 +13,8 @@ private:
     struct Action {
         void (*func)(void*);
         quint64 param[4]; // Size limit found experimentally. Verified by assert below.
+
+        Action() = default;
 
         Action(void (*f)(void*), void* p, quint64 paramSize) : func(f)
         {
@@ -39,14 +39,14 @@ private:
     };
 
     QMutex m_mutex;
-    std::vector<Status> m_status;
+    QVector<Status> m_status;
     qint64 m_freeIndex;
     qint64 m_numContexts;
     qint64 m_remaining;
-    std::vector<Action> m_deferredActions;
-    std::vector<Action> m_pendingActions;
+    QVector<Action> m_deferredActions;
+    QVector<Action> m_pendingActions;
 
-    void onAllQuiescentStatesPassed(std::vector<Action>& callbacks);
+    void onAllQuiescentStatesPassed(QVector<Action>& callbacks);
 
 public:
     typedef qint16 Context;
@@ -74,7 +74,7 @@ public:
 
         Closure closure = {pmf, target};
         QMutexLocker guard(&m_mutex);
-        m_deferredActions.push_back(Action(Closure::thunk, &closure, sizeof(closure)));
+        m_deferredActions.append(Action(Closure::thunk, &closure, sizeof(closure)));
     }
 
     void update(Context context);

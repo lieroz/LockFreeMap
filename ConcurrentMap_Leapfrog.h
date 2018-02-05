@@ -1,10 +1,9 @@
 #ifndef JUNCTION_CONCURRENTMAP_LEAPFROG_H
 #define JUNCTION_CONCURRENTMAP_LEAPFROG_H
 
-#include <Core.h>
+#include <QAtomicPointer>
 #include <Leapfrog.h>
 #include <QSBR.h>
-#include <QAtomicPointer>
 
 template <typename K, typename V, class KT = DefaultKeyTraits<K>, class VT = DefaultValueTraits<V> >
 class ConcurrentMap_Leapfrog

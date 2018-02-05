@@ -1,7 +1,7 @@
 #ifndef TURF_UTIL_H
 #define TURF_UTIL_H
 
-#include <Core.h>
+#include <QtCore>
 
 template <typename T>
 struct BestFit;

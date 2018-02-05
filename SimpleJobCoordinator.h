@@ -1,7 +1,6 @@
 #ifndef JUNCTION_SIMPLEJOBCOORDINATOR_H
 #define JUNCTION_SIMPLEJOBCOORDINATOR_H
 
-#include <Core.h>
 #include <QMutex>
 #include <QWaitCondition>
 #include <QMutexLocker>
