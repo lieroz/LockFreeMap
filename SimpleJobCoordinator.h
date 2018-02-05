@@ -14,8 +14,9 @@
 #define JUNCTION_SIMPLEJOBCOORDINATOR_H
 
 #include <Core.h>
-#include <striped/ConditionBank.h>
 #include <Atomic.h>
+#include <Mutex.h>
+#include <ConditionVariable.h>
 #include <iostream>
 
 namespace junction
@@ -35,8 +36,9 @@ public:
     };
 
 private:
-    JUNCTION_STRIPED_CONDITIONBANK_DEFINE_MEMBER()
     turf::Atomic<uptr> m_job;
+    turf::Mutex mutex;
+    turf::ConditionVariable condVar;
 
 public:
     SimpleJobCoordinator() : m_job(uptr(NULL))
@@ -50,27 +52,25 @@ public:
 
     void storeRelease(Job* job)
     {
-        junction::striped::ConditionPair& pair = JUNCTION_STRIPED_CONDITIONBANK_GET(this);
         {
-            turf::LockGuard<turf::Mutex> guard(pair.mutex);
+            turf::LockGuard<turf::Mutex> guard(mutex);
             m_job.store(uptr(job), turf::Release);
         }
-        pair.condVar.wakeAll();
+        condVar.wakeAll();
     }
 
     void participate()
     {
-        junction::striped::ConditionPair& pair = JUNCTION_STRIPED_CONDITIONBANK_GET(this);
         uptr prevJob = uptr(NULL);
         for (;;) {
             uptr job = m_job.load(turf::Consume);
             if (job == prevJob) {
-                turf::LockGuard<turf::Mutex> guard(pair.mutex);
+                turf::LockGuard<turf::Mutex> guard(mutex);
                 for (;;) {
                     job = m_job.loadNonatomic(); // No concurrent writes inside lock
                     if (job != prevJob)
                         break;
-                    pair.condVar.wait(guard);
+                    condVar.wait(guard);
                 }
             }
             if (job == 1)
@@ -89,12 +89,11 @@ public:
 
     void end()
     {
-        junction::striped::ConditionPair& pair = JUNCTION_STRIPED_CONDITIONBANK_GET(this);
         {
-            turf::LockGuard<turf::Mutex> guard(pair.mutex);
+            turf::LockGuard<turf::Mutex> guard(mutex);
             m_job.store(1, turf::Release);
         }
-        pair.condVar.wakeAll();
+        condVar.wakeAll();
     }
 };
 

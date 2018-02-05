@@ -16,7 +16,6 @@
 #include <Core.h>
 #include <Atomic.h>
 #include <Mutex.h>
-#include <ManualResetEvent.h>
 #include <Util.h>
 #include <MapTraits.h>
 #include <SimpleJobCoordinator.h>

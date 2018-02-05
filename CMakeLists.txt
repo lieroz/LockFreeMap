@@ -16,10 +16,6 @@ set(HEADERS
     "Mutex_CPP11.h"
     "ConditionVariable.h"
     "ConditionVariable_CPP11.h"
-    "striped/AutoResetEvent.h"
-    "striped/ConditionBank.h"
-    "striped/ConditionPair.h"
-    "striped/ManualResetEvent.h"
     "ManualResetEvent.h"
     "ManualResetEvent_CondVar.h"
     "SimpleJobCoordinator.h"
@@ -28,8 +24,7 @@ set(HEADERS
     "Util.h"
     "Leapfrog.h"
     "ConcurrentMap_Leapfrog.h"
-    "Mutex_SpinLock.h"
-    "striped/ConditionBank.h" "striped/ConditionBank.cpp")
+    "Mutex_SpinLock.h")
 
 add_executable(${PROJECT_NAME} "main.cpp" ${HEADERS})
 
