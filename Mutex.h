@@ -13,23 +13,44 @@
 #ifndef TURF_MUTEX_H
 #define TURF_MUTEX_H
 
+#include <mutex>
+
 namespace turf
 {
 template <typename LockType>
 class LockGuard;
 } // namespace turf
 
-#include "Mutex_CPP11.h"
-
 // Alias it:
 namespace turf
 {
 
-typedef turf::Mutex_CPP11 Mutex;
+class Mutex : protected std::mutex
+{
+private:
+    friend class LockGuard<Mutex>;
 
-//---------------------------------------------------------
-// Generic LockGuard
-//---------------------------------------------------------
+public:
+    Mutex() : std::mutex()
+    {
+    }
+
+    void lock()
+    {
+        std::mutex::lock();
+    }
+
+    bool tryLock()
+    {
+        return std::mutex::try_lock();
+    }
+
+    void unlock()
+    {
+        std::mutex::unlock();
+    }
+};
+
 template <typename LockType> class LockGuard
 {
 private:
@@ -47,6 +68,16 @@ public:
     LockType& getMutex()
     {
         return m_lock;
+    }
+};
+
+// Specialize LockGuard<Mutex_CPP11> so that ConditionVariable_CPP11 can use it:
+template <>
+class LockGuard<Mutex> : public std::unique_lock<std::mutex>
+{
+public:
+    LockGuard(Mutex& mutex) : std::unique_lock<std::mutex>(mutex)
+    {
     }
 };
 

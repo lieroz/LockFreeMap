@@ -14,14 +14,38 @@
 #define TURF_CONDITIONVARIABLE_H
 
 #include <Mutex.h>
-
-// Include the implementation:
-#include "ConditionVariable_CPP11.h"
+#include <condition_variable>
 
 // Alias it:
 namespace turf
 {
-typedef turf::ConditionVariable_CPP11 ConditionVariable;
+class ConditionVariable
+{
+private:
+    std::condition_variable m_condVar;
+
+public:
+    void wait(turf::LockGuard<Mutex>& guard)
+    {
+        m_condVar.wait(guard);
+    }
+
+    void timedWait(turf::LockGuard<Mutex>& guard, ureg waitMillis)
+    {
+        if (waitMillis > 0)
+            m_condVar.wait_for(guard, std::chrono::milliseconds(waitMillis));
+    }
+
+    void wakeOne()
+    {
+        m_condVar.notify_one();
+    }
+
+    void wakeAll()
+    {
+        m_condVar.notify_all();
+    }
+};
 }
 
 #endif // TURF_CONDITIONVARIABLE_H

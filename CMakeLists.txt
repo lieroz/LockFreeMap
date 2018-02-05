@@ -11,11 +11,8 @@ find_package(Qt5Core)
 set(HEADERS
     "Core.h"
     "Atomic.h"
-    "Atomic_CPP11.h"
     "Mutex.h"
-    "Mutex_CPP11.h"
     "ConditionVariable.h"
-    "ConditionVariable_CPP11.h"
     "SimpleJobCoordinator.h"
     "QSBR.h" "QSBR.cpp"
     "MapTraits.h"

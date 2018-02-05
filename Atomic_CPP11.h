@@ -10,8 +10,8 @@
   See the LICENSE file for more information.
 ------------------------------------------------------------------------*/
 
-#ifndef TURF_IMPL_ATOMIC_CPP11_H
-#define TURF_IMPL_ATOMIC_CPP11_H
+#ifndef TURF_IMPL_Atomic_H
+#define TURF_IMPL_Atomic_H
 
 #include <atomic>
 
@@ -64,20 +64,20 @@ enum MemoryOrder {
 };
 
 template <typename T>
-class Atomic_CPP11 : protected std::atomic<T>
+class Atomic : protected std::atomic<T>
 {
 private:
     // Hide operator=
     T operator=(T value);
 
 public:
-    Atomic_CPP11()
+    Atomic()
     {
     }
-    Atomic_CPP11(T value) : std::atomic<T>(value)
+    Atomic(T value) : std::atomic<T>(value)
     {
     }
-    Atomic_CPP11(const Atomic_CPP11& other) : std::atomic<T>(other.loadNonatomic())
+    Atomic(const Atomic& other) : std::atomic<T>(other.loadNonatomic())
     {
     }
     T loadNonatomic() const
@@ -133,4 +133,4 @@ public:
 
 } // namespace turf
 
-#endif // TURF_IMPL_ATOMIC_CPP11_H
+#endif // TURF_IMPL_Atomic_H
