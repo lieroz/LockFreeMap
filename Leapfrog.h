@@ -1,5 +1,5 @@
-#ifndef JUNCTION_DETAILS_LEAPFROG_H
-#define JUNCTION_DETAILS_LEAPFROG_H
+#ifndef LEAPFROG_H
+#define LEAPFROG_H
 
 #include <Util.h>
 #include <MapTraits.h>
@@ -564,4 +564,4 @@ endMigration:
     DefaultQSBR.enqueue(&TableMigration::destroy, this);
 }
 
-#endif // JUNCTION_DETAILS_LEAPFROG_H
+#endif // LEAPFROG_H

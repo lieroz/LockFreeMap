@@ -1,5 +1,5 @@
-#ifndef JUNCTION_MAPTRAITS_H
-#define JUNCTION_MAPTRAITS_H
+#ifndef MAPTRAITS_H
+#define MAPTRAITS_H
 
 #include <Util.h>
 
@@ -29,4 +29,4 @@ struct DefaultValueTraits {
     static const IntType Redirect = 1;
 };
 
-#endif // JUNCTION_MAPTRAITS_H
+#endif // MAPTRAITS_H

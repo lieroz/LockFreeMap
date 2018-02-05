@@ -1,5 +1,5 @@
-#ifndef JUNCTION_QSBR_H
-#define JUNCTION_QSBR_H
+#ifndef QSBR_H
+#define QSBR_H
 
 #include <QVector>
 #include <QMutex>
@@ -83,4 +83,4 @@ public:
 
 extern QSBR DefaultQSBR;
 
-#endif // JUNCTION_QSBR_H
+#endif // QSBR_H

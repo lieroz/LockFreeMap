@@ -1,5 +1,5 @@
-#ifndef TURF_UTIL_H
-#define TURF_UTIL_H
+#ifndef UTIL_H
+#define UTIL_H
 
 #include <QtCore>
 
@@ -118,4 +118,4 @@ inline quint64 deavalanche(quint64 h)
     return h;
 }
 
-#endif // TURF_UTIL_H
+#endif // UTIL_H
