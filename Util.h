@@ -6,23 +6,24 @@
 template <typename T>
 struct BestFit;
 
-// clang-format off
-
 template <>
 struct BestFit<qint32> {
     typedef quint32 Unsigned;
     typedef qint32 Signed;
 };
+
 template <>
 struct BestFit<quint32> {
     typedef quint32 Unsigned;
     typedef qint32 Signed;
 };
+
 template <>
 struct BestFit<qint64> {
     typedef quint64 Unsigned;
     typedef qint64 Signed;
 };
+
 template <>
 struct BestFit<quint64> {
     typedef quint64 Unsigned;
@@ -34,13 +35,6 @@ struct BestFit<T*> {
     typedef quint64 Unsigned;
     typedef qint64 Signed;
 };
-
-// clang-format on
-
-inline quint64 align(quint64 v, quint64 a)
-{
-    return (v + a - 1) & ~(a - 1);
-}
 
 inline quint32 roundUpPowerOf2(quint32 v)
 {
@@ -80,28 +74,6 @@ inline qint64 roundUpPowerOf2(qint64 v)
 inline bool isPowerOf2(quint64 v)
 {
     return (v & (v - 1)) == 0;
-}
-
-inline quint64 countSetBits(quint64 mask)
-{
-    quint64 count = 0;
-    while (mask) {
-        count += (mask & 1);
-        mask >>= 1;
-    }
-    return count;
-}
-
-template <class T>
-T min(T a, T b)
-{
-    return a < b ? a : b;
-}
-
-template <class T>
-T max(T a, T b)
-{
-    return a > b ? a : b;
 }
 
 // from code.google.com/p/smhasher/wiki/MurmurHash3

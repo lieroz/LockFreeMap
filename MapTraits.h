@@ -9,10 +9,14 @@ struct DefaultKeyTraits {
     typedef typename BestFit<T>::Unsigned Hash;
     static const Key NullKey = Key(0);
     static const Hash NullHash = Hash(0);
-    static Hash hash(T key) {
+
+    static Hash hash(T key)
+    {
         return avalanche(Hash(key));
     }
-    static Key dehash(Hash hash) {
+
+    static Key dehash(Hash hash)
+    {
         return (T) deavalanche(hash);
     }
 };

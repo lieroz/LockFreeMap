@@ -1,12 +1,13 @@
 #ifndef JUNCTION_QSBR_H
 #define JUNCTION_QSBR_H
 
-#include <Core.h>
 #include <vector>
 #include <string.h>
 
 #include <QMutex>
 #include <QMutexLocker>
+
+#define CALL_MEMBER(obj, pmf) ((obj).*(pmf))
 
 class QSBR
 {
@@ -20,6 +21,7 @@ private:
             Q_ASSERT(paramSize <= sizeof(param)); // Verify size limit.
             memcpy(&param, p, paramSize);
         }
+
         void operator()()
         {
             func(&param);
@@ -52,6 +54,7 @@ public:
     QSBR() : m_freeIndex(-1), m_numContexts(0), m_remaining(0)
     {
     }
+
     Context createContext();
     void destroyContext(Context context);
 
@@ -61,12 +64,14 @@ public:
         struct Closure {
             void (T::*pmf)();
             T* target;
+
             static void thunk(void* param)
             {
                 Closure* self = (Closure*) param;
-                TURF_CALL_MEMBER(*self->target, self->pmf)();
+                CALL_MEMBER(*self->target, self->pmf)();
             }
         };
+
         Closure closure = {pmf, target};
         QMutexLocker guard(&m_mutex);
         m_deferredActions.push_back(Action(Closure::thunk, &closure, sizeof(closure)));

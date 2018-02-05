@@ -13,6 +13,7 @@ public:
         virtual ~Job()
         {
         }
+
         virtual void run() = 0;
     };
 
@@ -37,25 +38,33 @@ public:
             QMutexLocker guard(&mutex);
             m_job.storeRelease(quint64(job));
         }
+
         condVar.wakeAll();
     }
 
     void participate()
     {
         quint64 prevJob = quint64(NULL);
+
         for (;;) {
             quint64 job = m_job.loadAcquire();
             if (job == prevJob) {
                 QMutexLocker guard(&mutex);
+
                 for (;;) {
                     job = m_job.load(); // No concurrent writes inside lock
-                    if (job != prevJob)
+                    if (job != prevJob) {
                         break;
+                    }
+
                     condVar.wait(&mutex);
                 }
             }
-            if (job == 1)
+
+            if (job == 1) {
                 return;
+            }
+
             reinterpret_cast<Job*>(job)->run();
             prevJob = job;
         }
@@ -74,6 +83,7 @@ public:
             QMutexLocker guard(&mutex);
             m_job.storeRelease(1);
         }
+
         condVar.wakeAll();
     }
 };
