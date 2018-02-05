@@ -13,7 +13,6 @@
 #ifndef JUNCTION_MAPTRAITS_H
 #define JUNCTION_MAPTRAITS_H
 
-#include <Core.h>
 #include <Util.h>
 
 namespace junction {

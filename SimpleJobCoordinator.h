@@ -36,7 +36,7 @@ private:
     QWaitCondition condVar;
 
 public:
-    SimpleJobCoordinator() : m_job(uptr(NULL))
+    SimpleJobCoordinator() : m_job(quint64(NULL))
     {
     }
 
@@ -56,9 +56,9 @@ public:
 
     void participate()
     {
-        uptr prevJob = uptr(NULL);
+        quint64 prevJob = quint64(NULL);
         for (;;) {
-            uptr job = m_job.loadAcquire();
+            quint64 job = m_job.loadAcquire();
             if (job == prevJob) {
                 QMutexLocker guard(&mutex);
                 for (;;) {

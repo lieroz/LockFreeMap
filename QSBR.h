@@ -14,9 +14,11 @@
 #define JUNCTION_QSBR_H
 
 #include <Core.h>
-#include <Mutex.h>
 #include <vector>
 #include <string.h>
+
+#include <QMutex>
+#include <QMutexLocker>
 
 namespace junction
 {
@@ -26,9 +28,9 @@ class QSBR
 private:
     struct Action {
         void (*func)(void*);
-        uptr param[4]; // Size limit found experimentally. Verified by assert below.
+        quint64 param[4]; // Size limit found experimentally. Verified by assert below.
 
-        Action(void (*f)(void*), void* p, ureg paramSize) : func(f)
+        Action(void (*f)(void*), void* p, quint64 paramSize) : func(f)
         {
 //            TURF_ASSERT(paramSize <= sizeof(param)); // Verify size limit.
             memcpy(&param, p, paramSize);
@@ -40,27 +42,27 @@ private:
     };
 
     struct Status {
-        u16 inUse : 1;
-        u16 wasIdle : 1;
-        s16 nextFree : 14;
+        qint16 inUse : 1;
+        qint16 wasIdle : 1;
+        qint16 nextFree : 14;
 
         Status() : inUse(1), wasIdle(0), nextFree(0)
         {
         }
     };
 
-    turf::Mutex m_mutex;
+    QMutex m_mutex;
     std::vector<Status> m_status;
-    sreg m_freeIndex;
-    sreg m_numContexts;
-    sreg m_remaining;
+    qint64 m_freeIndex;
+    qint64 m_numContexts;
+    qint64 m_remaining;
     std::vector<Action> m_deferredActions;
     std::vector<Action> m_pendingActions;
 
     void onAllQuiescentStatesPassed(std::vector<Action>& callbacks);
 
 public:
-    typedef u16 Context;
+    typedef qint16 Context;
 
     QSBR() : m_freeIndex(-1), m_numContexts(0), m_remaining(0)
     {
@@ -81,7 +83,7 @@ public:
             }
         };
         Closure closure = {pmf, target};
-        turf::LockGuard<turf::Mutex> guard(m_mutex);
+        QMutexLocker guard(&m_mutex);
         m_deferredActions.push_back(Action(Closure::thunk, &closure, sizeof(closure)));
     }
 

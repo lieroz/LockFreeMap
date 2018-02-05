@@ -26,40 +26,40 @@ struct BestFit;
 // clang-format off
 
 template <>
-struct BestFit<s32> {
-    typedef u32 Unsigned;
-    typedef s32 Signed;
+struct BestFit<qint32> {
+    typedef quint32 Unsigned;
+    typedef qint32 Signed;
 };
 template <>
-struct BestFit<u32> {
-    typedef u32 Unsigned;
-    typedef s32 Signed;
+struct BestFit<quint32> {
+    typedef quint32 Unsigned;
+    typedef qint32 Signed;
 };
 template <>
-struct BestFit<s64> {
-    typedef u64 Unsigned;
-    typedef s64 Signed;
+struct BestFit<qint64> {
+    typedef quint64 Unsigned;
+    typedef qint64 Signed;
 };
 template <>
-struct BestFit<u64> {
-    typedef u64 Unsigned;
-    typedef s64 Signed;
+struct BestFit<quint64> {
+    typedef quint64 Unsigned;
+    typedef qint64 Signed;
 };
 
 template <class T>
 struct BestFit<T*> {
-    typedef uptr Unsigned;
-    typedef sptr Signed;
+    typedef quint64 Unsigned;
+    typedef qint64 Signed;
 };
 
 // clang-format on
 
-inline ureg align(ureg v, ureg a)
+inline quint64 align(quint64 v, quint64 a)
 {
     return (v + a - 1) & ~(a - 1);
 }
 
-inline u32 roundUpPowerOf2(u32 v)
+inline quint32 roundUpPowerOf2(quint32 v)
 {
     v--;
     v |= v >> 1;
@@ -71,12 +71,12 @@ inline u32 roundUpPowerOf2(u32 v)
     return v;
 }
 
-inline s32 roundUpPowerOf2(s32 v)
+inline qint32 roundUpPowerOf2(qint32 v)
 {
-    return (s32) roundUpPowerOf2((u32) v);
+    return (qint32) roundUpPowerOf2((quint32) v);
 }
 
-inline u64 roundUpPowerOf2(u64 v)
+inline quint64 roundUpPowerOf2(quint64 v)
 {
     v--;
     v |= v >> 1;
@@ -89,19 +89,19 @@ inline u64 roundUpPowerOf2(u64 v)
     return v;
 }
 
-inline s64 roundUpPowerOf2(s64 v)
+inline qint64 roundUpPowerOf2(qint64 v)
 {
-    return (s64) roundUpPowerOf2((u64) v);
+    return (qint64) roundUpPowerOf2((quint64) v);
 }
 
-inline bool isPowerOf2(ureg v)
+inline bool isPowerOf2(quint64 v)
 {
     return (v & (v - 1)) == 0;
 }
 
-inline ureg countSetBits(u64 mask)
+inline quint64 countSetBits(quint64 mask)
 {
-    ureg count = 0;
+    quint64 count = 0;
     while (mask) {
         count += (mask & 1);
         mask >>= 1;
@@ -122,7 +122,7 @@ T max(T a, T b)
 }
 
 // from code.google.com/p/smhasher/wiki/MurmurHash3
-inline u32 avalanche(u32 h)
+inline quint32 avalanche(quint32 h)
 {
     h ^= h >> 16;
     h *= 0x85ebca6b;
@@ -132,7 +132,7 @@ inline u32 avalanche(u32 h)
     return h;
 }
 
-inline u32 deavalanche(u32 h)
+inline quint32 deavalanche(quint32 h)
 {
     h ^= h >> 16;
     h *= 0x7ed1b41d;
@@ -143,7 +143,7 @@ inline u32 deavalanche(u32 h)
 }
 
 // from code.google.com/p/smhasher/wiki/MurmurHash3
-inline u64 avalanche(u64 h)
+inline quint64 avalanche(quint64 h)
 {
     h ^= h >> 33;
     h *= 0xff51afd7ed558ccd;
@@ -153,7 +153,7 @@ inline u64 avalanche(u64 h)
     return h;
 }
 
-inline u64 deavalanche(u64 h)
+inline quint64 deavalanche(quint64 h)
 {
     h ^= h >> 33;
     h *= 0x9cb4b2f8129337db;

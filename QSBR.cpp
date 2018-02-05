@@ -11,8 +11,6 @@
 ------------------------------------------------------------------------*/
 
 #include <QSBR.h>
-#include <Mutex.h>
-#include <vector>
 
 namespace junction
 {
@@ -21,13 +19,13 @@ QSBR DefaultQSBR;
 
 QSBR::Context QSBR::createContext()
 {
-    turf::LockGuard<turf::Mutex> guard(m_mutex);
+    QMutexLocker guard(&m_mutex);
     m_numContexts++;
     m_remaining++;
 //    TURF_ASSERT(m_numContexts < (1 << 14));
-    sreg context = m_freeIndex;
+    qint64 context = m_freeIndex;
     if (context >= 0) {
-//        TURF_ASSERT(context < (sreg) m_status.size());
+//        TURF_ASSERT(context < (qint64) m_status.size());
 //        TURF_ASSERT(!m_status[context].inUse);
         m_freeIndex = m_status[context].nextFree;
         m_status[context] = Status();
@@ -42,7 +40,7 @@ void QSBR::destroyContext(QSBR::Context context)
 {
     std::vector<Action> actions;
     {
-        turf::LockGuard<turf::Mutex> guard(m_mutex);
+        QMutexLocker guard(&m_mutex);
 //        TURF_ASSERT(context < m_status.size());
         if (m_status[context].inUse && !m_status[context].wasIdle) {
 //            TURF_ASSERT(m_remaining > 0);
@@ -55,7 +53,7 @@ void QSBR::destroyContext(QSBR::Context context)
         if (m_remaining == 0)
             onAllQuiescentStatesPassed(actions);
     }
-    for (ureg i = 0; i < actions.size(); i++)
+    for (quint64 i = 0; i < actions.size(); i++)
         actions[i]();
 }
 
@@ -65,7 +63,7 @@ void QSBR::onAllQuiescentStatesPassed(std::vector<Action>& actions)
     actions.swap(m_pendingActions);
     m_pendingActions.swap(m_deferredActions);
     m_remaining = m_numContexts;
-    for (ureg i = 0; i < m_status.size(); i++)
+    for (quint64 i = 0; i < m_status.size(); i++)
         m_status[i].wasIdle = 0;
 }
 
@@ -73,7 +71,7 @@ void QSBR::update(QSBR::Context context)
 {
     std::vector<Action> actions;
     {
-        turf::LockGuard<turf::Mutex> guard(m_mutex);
+        QMutexLocker guard(&m_mutex);
 //        TURF_ASSERT(context < m_status.size());
         Status& status = m_status[context];
 //        TURF_ASSERT(status.inUse);
@@ -85,7 +83,7 @@ void QSBR::update(QSBR::Context context)
             return;
         onAllQuiescentStatesPassed(actions);
     }
-    for (ureg i = 0; i < actions.size(); i++)
+    for (quint64 i = 0; i < actions.size(); i++)
         actions[i]();
 }
 
@@ -94,10 +92,10 @@ void QSBR::flush()
     // This is like saying that all contexts are quiescent,
     // so we can issue all actions at once.
     // No lock is taken.
-    for (ureg i = 0; i < m_pendingActions.size(); i++)
+    for (quint64 i = 0; i < m_pendingActions.size(); i++)
         m_pendingActions[i]();
     m_pendingActions.clear();
-    for (ureg i = 0; i < m_deferredActions.size(); i++)
+    for (quint64 i = 0; i < m_deferredActions.size(); i++)
         m_deferredActions[i]();
     m_deferredActions.clear();
     m_remaining = m_numContexts;
