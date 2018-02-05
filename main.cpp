@@ -1,42 +1,48 @@
 #include <ConcurrentMap_Leapfrog.h>
-#include <thread>
-#include <vector>
-#include <iostream>
+#include <QRunnable>
+#include <QThreadPool>
+#include <QDebug>
 
 #define NUM_INTS 60
 #define NUM_CYCLES 1000000
 
+struct Foo {
+
+};
+
 // Create the map.
-typedef ConcurrentMap_Leapfrog<int, int> ConcurrentMap;
+typedef ConcurrentMap_Leapfrog<int, Foo*> ConcurrentMap;
 ConcurrentMap map;
 
-void testMap(int m_arg)
-{
-    for (int j = 0; j < NUM_CYCLES; j++) {
-        const int index = j % (8 * NUM_INTS);
-        map.insertOrFind(index + 1);
-        map.assign(index + 1, m_arg + 2);
+class MyRunnable : public QRunnable {
+protected:
+    void run() override {
+        for (int j = 0; j < NUM_CYCLES; j++) {
+            const int index = j % (8 * NUM_INTS);
+            map.insertOrFind(index + 1);
+            map.assign(index + 1, new Foo);
 
-        if (j % 10000 == 0) {
-            std::cout << m_arg << " " << j << std::endl;
+            if (j % 10000 == 0) {
+                qDebug() << j;
+            }
         }
     }
-}
+};
 
 int main()
 {
     // Create QSBR context for the main thread.
     QSBR::Context context = DefaultQSBR.createContext();
 
-    std::vector<std::thread> threads(NUM_INTS);
+    QThreadPool *pool = new QThreadPool;
+    pool->setMaxThreadCount(10);
 
     for (int i = 0; i < NUM_INTS; ++i) {
-        threads[i] = std::thread(testMap, i + 2);
+        MyRunnable *task = new MyRunnable;
+        task->setAutoDelete(true);
+        pool->start(task);
     }
 
-    for (int i = 0; i < NUM_INTS; ++i) {
-        threads[i].join();
-    }
     // Update the QSBR context for this thread.
     // In a larger application, this should be called periodically, for each thread, at a moment
     // when the thread is quiescent – that is, not in the middle of any operation that uses a
@@ -45,5 +51,7 @@ int main()
 
     // Destroy the QSBR context for the main thread.
     DefaultQSBR.destroyContext(context);
+    delete pool;
+
     return 0;
 }
