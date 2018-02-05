@@ -63,7 +63,7 @@ public:
 
     void runOne(Job* job)
     {
-        TURF_ASSERT(job != (Job*) m_job.load());
+        Q_ASSERT(job != (Job*) m_job.load());
         storeRelease(job);
         job->run();
     }

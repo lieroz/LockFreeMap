@@ -39,7 +39,7 @@ public:
         // There are no racing calls to this function.
         typename Details::Table* oldRoot = m_root.load();
         m_root.storeRelease(migration->m_destination);
-        TURF_ASSERT(oldRoot == migration->getSources()[0].table);
+        Q_ASSERT(oldRoot == migration->getSources()[0].table);
         // Caller will GC the TableMigration and the source table.
     }
 
@@ -135,9 +135,9 @@ public:
 
         Value exchangeValue(Value desired)
         {
-            TURF_ASSERT(desired != Value(ValueTraits::NullValue));
-            TURF_ASSERT(desired != Value(ValueTraits::Redirect));
-            TURF_ASSERT(m_cell); // Cell must have been found or inserted
+            Q_ASSERT(desired != Value(ValueTraits::NullValue));
+            Q_ASSERT(desired != Value(ValueTraits::Redirect));
+            Q_ASSERT(m_cell); // Cell must have been found or inserted
             TURF_TRACE(ConcurrentMap_Leapfrog, 4, "[Mutator::exchangeValue] called", quint64(m_table), quint64(m_value));
             for (;;) {
                 Value oldValue = m_value;
@@ -197,15 +197,15 @@ public:
 
         Value eraseValue()
         {
-            TURF_ASSERT(m_cell); // Cell must have been found or inserted
+            Q_ASSERT(m_cell); // Cell must have been found or inserted
             TURF_TRACE(ConcurrentMap_Leapfrog, 11, "[Mutator::eraseValue] called", quint64(m_table), quint64(m_cell));
             for (;;) {
                 if (m_value == Value(ValueTraits::NullValue))
                     return Value(m_value);
-                TURF_ASSERT(m_cell); // m_value is non-NullValue, therefore cell must have been found or inserted.
+                Q_ASSERT(m_cell); // m_value is non-NullValue, therefore cell must have been found or inserted.
                 if (m_cell->value.compare_exchange_strong(m_value, Value(ValueTraits::NullValue), std::memory_order_consume)) {
                     // Exchange was successful and a non-NULL value was erased and returned by reference in m_value.
-                    TURF_ASSERT(m_value != ValueTraits::NullValue); // Implied by the test at the start of the loop.
+                    Q_ASSERT(m_value != ValueTraits::NullValue); // Implied by the test at the start of the loop.
                     Value result = m_value;
                     m_value = Value(ValueTraits::NullValue); // Leave the mutator in a valid state
                     return result;
@@ -309,8 +309,8 @@ public:
 
         void next()
         {
-            TURF_ASSERT(m_table);
-            TURF_ASSERT(isValid() || m_idx == -1); // Either the Iterator is already valid, or we've just started iterating.
+            Q_ASSERT(m_table);
+            Q_ASSERT(isValid() || m_idx == -1); // Either the Iterator is already valid, or we've just started iterating.
             while (++m_idx <= m_table->sizeMask) {
                 // Index still inside range of table.
                 typename Details::CellGroup* group = m_table->getCellGroups() + (m_idx >> 2);
@@ -319,7 +319,7 @@ public:
                 if (m_hash != KeyTraits::NullHash) {
                     // Cell has been reserved.
                     m_value = cell->value.load(std::memory_order_relaxed);
-                    TURF_ASSERT(m_value != Value(ValueTraits::Redirect));
+                    Q_ASSERT(m_value != Value(ValueTraits::Redirect));
                     if (m_value != Value(ValueTraits::NullValue))
                         return; // Yield this cell.
                 }
@@ -336,14 +336,14 @@ public:
 
         Key getKey() const
         {
-            TURF_ASSERT(isValid());
+            Q_ASSERT(isValid());
             // Since we've forbidden concurrent inserts (for now), nonatomic would suffice here, but let's plan ahead:
             return KeyTraits::dehash(m_hash);
         }
 
         Value getValue() const
         {
-            TURF_ASSERT(isValid());
+            Q_ASSERT(isValid());
             return m_value;
         }
     };

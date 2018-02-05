@@ -17,7 +17,7 @@ private:
 
         Action(void (*f)(void*), void* p, quint64 paramSize) : func(f)
         {
-            TURF_ASSERT(paramSize <= sizeof(param)); // Verify size limit.
+            Q_ASSERT(paramSize <= sizeof(param)); // Verify size limit.
             memcpy(&param, p, paramSize);
         }
         void operator()()

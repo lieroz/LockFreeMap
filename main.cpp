@@ -35,7 +35,7 @@ int main()
     QSBR::Context context = DefaultQSBR.createContext();
 
     QThreadPool *pool = new QThreadPool;
-    pool->setMaxThreadCount(10);
+    pool->setMaxThreadCount(100);
 
     for (int i = 0; i < NUM_INTS; ++i) {
         MyRunnable *task = new MyRunnable;

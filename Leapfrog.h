@@ -18,8 +18,8 @@ struct Leapfrog {
     static const quint64 TableMigrationUnitSize = 32;
     static const quint64 LinearSearchLimit = 128;
     static const quint64 CellsInUseSample = LinearSearchLimit;
-    TURF_STATIC_ASSERT(LinearSearchLimit > 0 && LinearSearchLimit < 256);              // Must fit in CellGroup::links
-    TURF_STATIC_ASSERT(CellsInUseSample > 0 && CellsInUseSample <= LinearSearchLimit); // Limit sample to failed search chain
+    Q_STATIC_ASSERT(LinearSearchLimit > 0 && LinearSearchLimit < 256);              // Must fit in CellGroup::links
+    Q_STATIC_ASSERT(CellsInUseSample > 0 && CellsInUseSample <= LinearSearchLimit); // Limit sample to failed search chain
 
     struct Cell {
         QBasicAtomicInteger<Hash> hash;
@@ -48,8 +48,8 @@ struct Leapfrog {
 
         static Table* create(quint64 tableSize)
         {
-            TURF_ASSERT(turf::util::isPowerOf2(tableSize));
-            TURF_ASSERT(tableSize >= 4);
+            Q_ASSERT(isPowerOf2(tableSize));
+            Q_ASSERT(tableSize >= 4);
             quint64 numGroups = tableSize >> 2;
             Table* table = (Table*) std::malloc(sizeof(Table) + sizeof(CellGroup) * numGroups);
             new(table) Table(tableSize - 1);
@@ -141,8 +141,8 @@ struct Leapfrog {
     static Cell* find(Hash hash, Table* table)
     {
         TURF_TRACE(Leapfrog, 0, "[find] called", quint64(table), hash);
-        TURF_ASSERT(table);
-        TURF_ASSERT(hash != KeyTraits::NullHash);
+        Q_ASSERT(table);
+        Q_ASSERT(hash != KeyTraits::NullHash);
         quint64 sizeMask = table->sizeMask;
         // Optimistically check hashed cell even though it might belong to another bucket
         quint64 idx = hash & sizeMask;
@@ -179,8 +179,8 @@ struct Leapfrog {
     static InsertResult insertOrFind(Hash hash, Table* table, Cell*& cell, quint64& overflowIdx)
     {
         TURF_TRACE(Leapfrog, 3, "[insertOrFind] called", quint64(table), hash);
-        TURF_ASSERT(table);
-        TURF_ASSERT(hash != KeyTraits::NullHash);
+        Q_ASSERT(table);
+        Q_ASSERT(hash != KeyTraits::NullHash);
         quint64 sizeMask = table->sizeMask;
         quint64 idx = quint64(hash);
 
@@ -227,7 +227,7 @@ struct Leapfrog {
                         probeHash = cell->hash.load();
                     } while (probeHash == KeyTraits::NullHash);
                 }
-                TURF_ASSERT(((probeHash ^ hash) & sizeMask) == 0); // Only hashes in same bucket can be linked
+                Q_ASSERT(((probeHash ^ hash) & sizeMask) == 0); // Only hashes in same bucket can be linked
                 if (probeHash == hash) {
                     TURF_TRACE(Leapfrog, 8, "[insertOrFind] found in probe chain", quint64(table), idx);
                     return InsertResult_AlreadyFound;
@@ -236,7 +236,7 @@ struct Leapfrog {
                 // Reached the end of the link chain for this bucket.
                 // Switch to linear probing until we reserve a new cell or find a late-arriving cell in the same bucket.
                 quint64 prevLinkIdx = idx;
-                TURF_ASSERT(qint64(maxIdx - idx) >= 0); // Nobody would have linked an idx that's out of range.
+                Q_ASSERT(qint64(maxIdx - idx) >= 0); // Nobody would have linked an idx that's out of range.
                 quint64 linearProbesRemaining = min(maxIdx - idx, LinearSearchLimit);
                 while (linearProbesRemaining-- > 0) {
                     idx++;
@@ -248,7 +248,7 @@ struct Leapfrog {
                         if (cell->hash.testAndSetRelaxed(probeHash, hash)) {
                             // Success. We've reserved the cell. Link it to previous cell in same bucket.
                             TURF_TRACE(Leapfrog, 9, "[insertOrFind] reserved cell", quint64(table), idx);
-                            TURF_ASSERT(probeDelta == 0);
+                            Q_ASSERT(probeDelta == 0);
                             quint8 desiredDelta = idx - prevLinkIdx;
                             prevLink->store(desiredDelta);
                             return InsertResult_InsertedNew;
@@ -384,16 +384,16 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
 
                 // We've got a key/value pair to migrate.
                 // Reserve a destination cell in the destination.
-                TURF_ASSERT(srcHash != KeyTraits::NullHash);
-                TURF_ASSERT(srcValue != Value(ValueTraits::NullValue));
-                TURF_ASSERT(srcValue != Value(ValueTraits::Redirect));
+                Q_ASSERT(srcHash != KeyTraits::NullHash);
+                Q_ASSERT(srcValue != Value(ValueTraits::NullValue));
+                Q_ASSERT(srcValue != Value(ValueTraits::Redirect));
                 Cell* dstCell;
                 quint64 overflowIdx;
                 InsertResult result = insertOrFind(srcHash, m_destination, dstCell, overflowIdx);
                 // During migration, a hash can only exist in one place among all the source tables,
                 // and it is only migrated by one thread. Therefore, the hash will never already exist
                 // in the destination table:
-                TURF_ASSERT(result != InsertResult_AlreadyFound);
+                Q_ASSERT(result != InsertResult_AlreadyFound);
                 if (result == InsertResult_Overflow) {
                     // Destination overflow.
                     // This can happen for several reasons. For example, the source table could have
@@ -410,7 +410,7 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
                     // Try to place a Redirect marker in srcValue.
                     srcCell->value.compare_exchange_strong(srcValue, Value(ValueTraits::Redirect), std::memory_order_relaxed);
                     Value doubleCheckedSrcValue = srcValue;
-                    TURF_ASSERT(doubleCheckedSrcValue != Value(ValueTraits::Redirect)); // Only one thread can redirect a cell at a time.
+                    Q_ASSERT(doubleCheckedSrcValue != Value(ValueTraits::Redirect)); // Only one thread can redirect a cell at a time.
                     if (doubleCheckedSrcValue == srcValue) {
                         // No racing writes to the src. We've successfully placed the Redirect marker.
                         // srcValue was non-NULL when we decided to migrate it, but it may have changed to NULL
@@ -445,7 +445,7 @@ void Leapfrog<Map>::TableMigration::run()
         }
     } while (!m_workerStatus.testAndSetRelaxed(probeStatus, probeStatus + 2));
     // # of workers has been incremented, and the end flag is clear.
-    TURF_ASSERT((probeStatus & 1) == 0);
+    Q_ASSERT((probeStatus & 1) == 0);
 
     // Iterate over all source tables.
     for (quint64 s = 0; s < m_numSources; s++) {
@@ -479,7 +479,7 @@ void Leapfrog<Map>::TableMigration::run()
                 goto endMigration;
             }
             qint64 prevRemaining = m_unitsRemaining.fetchAndSubRelaxed(1);
-            TURF_ASSERT(prevRemaining > 0);
+            Q_ASSERT(prevRemaining > 0);
             if (prevRemaining == 1) {
                 // *** SUCCESSFUL MIGRATION ***
                 // That was the last chunk to migrate.
@@ -501,7 +501,7 @@ endMigration:
 
     // We're the very last worker thread.
     // Perform the appropriate post-migration step depending on whether the migration succeeded or failed.
-    TURF_ASSERT(probeStatus == 3);
+    Q_ASSERT(probeStatus == 3);
     bool overflowed = m_overflowed.load(); // No racing writes at this point
     if (!overflowed) {
         // The migration succeeded. This is the most likely outcome. Publish the new subtree.
