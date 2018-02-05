@@ -1,15 +1,3 @@
-/*------------------------------------------------------------------------
-  Junction: Concurrent data structures in C++
-  Copyright (c) 2016 Jeff Preshing
-
-  Distributed under the Simplified BSD License.
-  Original location: https://github.com/preshing/junction
-
-  This software is distributed WITHOUT ANY WARRANTY; without even the
-  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  See the LICENSE file for more information.
-------------------------------------------------------------------------*/
-
 #ifndef JUNCTION_CONCURRENTMAP_LEAPFROG_H
 #define JUNCTION_CONCURRENTMAP_LEAPFROG_H
 
