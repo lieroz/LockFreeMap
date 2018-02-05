@@ -13,18 +13,13 @@
 #ifndef JUNCTION_SIMPLEJOBCOORDINATOR_H
 #define JUNCTION_SIMPLEJOBCOORDINATOR_H
 
-#include <Core.h>
-#include <Atomic.h>
-#include <Mutex.h>
-#include <ConditionVariable.h>
-#include <iostream>
+#include <QMutex>
+#include <QWaitCondition>
+#include <QMutexLocker>
 
 namespace junction
 {
 
-// It's safe to call everything here from within a Job itself.
-// In particular, you're allowed to particpate() recursively.
-// We actually do this in ConcurrentMap_Grampa::publish() when migrating a new flattree.
 class SimpleJobCoordinator
 {
 public:
@@ -36,9 +31,9 @@ public:
     };
 
 private:
-    turf::Atomic<uptr> m_job;
-    turf::Mutex mutex;
-    turf::ConditionVariable condVar;
+    QBasicAtomicInteger<quint64> m_job;
+    QMutex mutex;
+    QWaitCondition condVar;
 
 public:
     SimpleJobCoordinator() : m_job(uptr(NULL))
@@ -47,14 +42,14 @@ public:
 
     Job* loadConsume() const
     {
-        return (Job*) m_job.load(turf::Consume);
+        return (Job*) m_job.loadAcquire();
     }
 
     void storeRelease(Job* job)
     {
         {
-            turf::LockGuard<turf::Mutex> guard(mutex);
-            m_job.store(uptr(job), turf::Release);
+            QMutexLocker guard(&mutex);
+            m_job.storeRelease(quint64(job));
         }
         condVar.wakeAll();
     }
@@ -63,14 +58,14 @@ public:
     {
         uptr prevJob = uptr(NULL);
         for (;;) {
-            uptr job = m_job.load(turf::Consume);
+            uptr job = m_job.loadAcquire();
             if (job == prevJob) {
-                turf::LockGuard<turf::Mutex> guard(mutex);
+                QMutexLocker guard(&mutex);
                 for (;;) {
-                    job = m_job.loadNonatomic(); // No concurrent writes inside lock
+                    job = m_job.load(); // No concurrent writes inside lock
                     if (job != prevJob)
                         break;
-                    condVar.wait(guard);
+                    condVar.wait(&mutex);
                 }
             }
             if (job == 1)
@@ -90,8 +85,8 @@ public:
     void end()
     {
         {
-            turf::LockGuard<turf::Mutex> guard(mutex);
-            m_job.store(1, turf::Release);
+            QMutexLocker guard(&mutex);
+            m_job.storeRelease(1);
         }
         condVar.wakeAll();
     }
