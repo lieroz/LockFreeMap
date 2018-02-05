@@ -71,7 +71,7 @@ public:
                 m_cell = Details::find(hash, m_table);
                 if (!m_cell)
                     return;
-                Value value = m_cell->value.load(Consume);
+                Value value = m_cell->value.load(std::memory_order_consume);
                 if (value != Value(ValueTraits::Redirect)) {
                     // Found an existing value
                     m_value = value;
@@ -99,7 +99,7 @@ public:
                 }
                 case Details::InsertResult_AlreadyFound: {
                     // The hash was already found in the table.
-                    Value value = m_cell->value.load(Consume);
+                    Value value = m_cell->value.load(std::memory_order_consume);
                     if (value == Value(ValueTraits::Redirect)) {
                         // We've encountered a Redirect value.
                         TURF_TRACE(ConcurrentMap_Leapfrog, 3, "[Mutator] insertOrFind was redirected", quint64(m_table), quint64(m_value));
@@ -141,7 +141,7 @@ public:
             TURF_TRACE(ConcurrentMap_Leapfrog, 4, "[Mutator::exchangeValue] called", quint64(m_table), quint64(m_value));
             for (;;) {
                 Value oldValue = m_value;
-                if (m_cell->value.compareExchangeStrong(m_value, desired, ConsumeRelease)) {
+                if (m_cell->value.compare_exchange_strong(m_value, desired, std::memory_order_acq_rel)) {
                     // Exchange was successful. Return previous value.
                     TURF_TRACE(ConcurrentMap_Leapfrog, 5, "[Mutator::exchangeValue] exchanged Value", quint64(m_value), quint64(desired));
                     Value result = m_value;
@@ -170,7 +170,7 @@ public:
                     quint64 overflowIdx;
                     switch (Details::insertOrFind(hash, m_table, m_cell, overflowIdx)) { // Modifies m_cell
                     case Details::InsertResult_AlreadyFound:
-                        m_value = m_cell->value.load(Consume);
+                        m_value = m_cell->value.load(std::memory_order_consume);
                         if (m_value == Value(ValueTraits::Redirect)) {
                             TURF_TRACE(ConcurrentMap_Leapfrog, 9, "[Mutator::exchangeValue] was re-redirected", quint64(m_table), quint64(m_value));
                             break;
@@ -203,7 +203,7 @@ public:
                 if (m_value == Value(ValueTraits::NullValue))
                     return Value(m_value);
                 TURF_ASSERT(m_cell); // m_value is non-NullValue, therefore cell must have been found or inserted.
-                if (m_cell->value.compareExchangeStrong(m_value, Value(ValueTraits::NullValue), Consume)) {
+                if (m_cell->value.compare_exchange_strong(m_value, Value(ValueTraits::NullValue), std::memory_order_consume)) {
                     // Exchange was successful and a non-NULL value was erased and returned by reference in m_value.
                     TURF_ASSERT(m_value != ValueTraits::NullValue); // Implied by the test at the start of the loop.
                     Value result = m_value;
@@ -230,7 +230,7 @@ public:
                         m_value = Value(ValueTraits::NullValue);
                         return m_value;
                     }
-                    m_value = m_cell->value.load(Relaxed);
+                    m_value = m_cell->value.load(std::memory_order_relaxed);
                     if (m_value != Value(ValueTraits::Redirect))
                         break;
                     TURF_TRACE(ConcurrentMap_Leapfrog, 14, "[Mutator::eraseValue] was re-redirected", quint64(m_table), quint64(m_cell));
@@ -259,7 +259,7 @@ public:
             typename Details::Cell* cell = Details::find(hash, table);
             if (!cell)
                 return Value(ValueTraits::NullValue);
-            Value value = cell->value.load(Consume);
+            Value value = cell->value.load(std::memory_order_consume);
             if (value != Value(ValueTraits::Redirect))
                 return value; // Found an existing value
             // We've been redirected to a new table. Help with the migration.
@@ -318,7 +318,7 @@ public:
                 m_hash = cell->hash.load();
                 if (m_hash != KeyTraits::NullHash) {
                     // Cell has been reserved.
-                    m_value = cell->value.load(Relaxed);
+                    m_value = cell->value.load(std::memory_order_relaxed);
                     TURF_ASSERT(m_value != Value(ValueTraits::Redirect));
                     if (m_value != Value(ValueTraits::NullValue))
                         return; // Yield this cell.

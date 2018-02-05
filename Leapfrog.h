@@ -24,7 +24,7 @@ struct Leapfrog {
 
     struct Cell {
         QBasicAtomicInteger<Hash> hash;
-        Atomic<Value> value;
+        std::atomic<Value> value;
     };
 
     struct CellGroup {
@@ -60,7 +60,7 @@ struct Leapfrog {
                     group->deltas[j].store(0);
                     group->deltas[j + 4].store(0);
                     group->cells[j].hash.store(KeyTraits::NullHash);
-                    group->cells[j].value.storeNonatomic(Value(ValueTraits::NullValue));
+                    group->cells[j].value.store(Value(ValueTraits::NullValue), std::memory_order_relaxed);
                 }
             }
             return table;
@@ -319,7 +319,7 @@ struct Leapfrog {
         for (quint64 linearProbesRemaining = CellsInUseSample; linearProbesRemaining > 0; linearProbesRemaining--) {
             CellGroup* group = table->getCellGroups() + ((idx & sizeMask) >> 2);
             Cell* cell = group->cells + (idx & 3);
-            Value value = cell->value.load(Relaxed);
+            Value value = cell->value.load(std::memory_order_relaxed);
             if (value == Value(ValueTraits::Redirect)) {
                 // Another thread kicked off the jobCoordinator. The caller will participate upon return.
                 TURF_TRACE(Leapfrog, 18, "[beginTableMigration] redirected while determining table size", 0, 0);
@@ -352,8 +352,9 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
             srcHash = srcCell->hash.load();
             if (srcHash == KeyTraits::NullHash) {
                 // An unused cell. Try to put a Redirect marker in its value.
-                srcValue =
-                    srcCell->value.compareExchange(Value(ValueTraits::NullValue), Value(ValueTraits::Redirect), Relaxed);
+                Value expected = Value(ValueTraits::NullValue);
+                srcCell->value.compare_exchange_strong(expected, Value(ValueTraits::Redirect), std::memory_order_relaxed);
+                srcValue = expected;
                 if (srcValue == Value(ValueTraits::Redirect)) {
                     // srcValue is already marked Redirect due to previous incomplete migration.
                     TURF_TRACE(Leapfrog, 19, "[migrateRange] empty cell already redirected", quint64(srcTable), srcIdx);
@@ -365,10 +366,10 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
                 // Otherwise, somebody just claimed the cell. Read srcHash again...
             } else {
                 // Check for deleted/uninitialized value.
-                srcValue = srcCell->value.load(Relaxed);
+                srcValue = srcCell->value.load(std::memory_order_relaxed);
                 if (srcValue == Value(ValueTraits::NullValue)) {
                     // Try to put a Redirect marker.
-                    if (srcCell->value.compareExchangeStrong(srcValue, Value(ValueTraits::Redirect), Relaxed))
+                    if (srcCell->value.compare_exchange_strong(srcValue, Value(ValueTraits::Redirect), std::memory_order_relaxed))
                         break; // Redirect has been placed. Break inner loop, continue outer loop.
                     TURF_TRACE(Leapfrog, 21, "[migrateRange] race to insert value", quint64(srcTable), srcIdx);
                     if (srcValue == Value(ValueTraits::Redirect)) {
@@ -406,10 +407,10 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
                 // Migrate the old value to the new cell.
                 for (;;) {
                     // Copy srcValue to the destination.
-                    dstCell->value.store(srcValue, Relaxed);
+                    dstCell->value.store(srcValue, std::memory_order_relaxed);
                     // Try to place a Redirect marker in srcValue.
-                    Value doubleCheckedSrcValue =
-                        srcCell->value.compareExchange(srcValue, Value(ValueTraits::Redirect), Relaxed);
+                    srcCell->value.compare_exchange_strong(srcValue, Value(ValueTraits::Redirect), std::memory_order_relaxed);
+                    Value doubleCheckedSrcValue = srcValue;
                     TURF_ASSERT(doubleCheckedSrcValue != Value(ValueTraits::Redirect)); // Only one thread can redirect a cell at a time.
                     if (doubleCheckedSrcValue == srcValue) {
                         // No racing writes to the src. We've successfully placed the Redirect marker.

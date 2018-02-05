@@ -10,7 +10,6 @@ find_package(Qt5Core)
 
 set(HEADERS
     "Core.h"
-    "Atomic.h"
     "SimpleJobCoordinator.h"
     "QSBR.h" "QSBR.cpp"
     "MapTraits.h"
