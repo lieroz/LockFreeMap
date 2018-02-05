@@ -1,9 +1,7 @@
 #ifndef JUNCTION_CONCURRENTMAP_LEAPFROG_H
 #define JUNCTION_CONCURRENTMAP_LEAPFROG_H
 
-#include <QAtomicPointer>
 #include <Leapfrog.h>
-#include <QSBR.h>
 
 template <typename K, typename V, class KT = DefaultKeyTraits<K>, class VT = DefaultValueTraits<V> >
 class ConcurrentMap_Leapfrog
@@ -17,7 +15,7 @@ public:
     typedef Leapfrog<ConcurrentMap_Leapfrog> Details;
 
 private:
-    QAtomicPointer<typename Details::Table> m_root;
+    Atomic<typename Details::Table*> m_root;
 
 public:
     ConcurrentMap_Leapfrog(quint64 capacity = Details::InitialSize) : m_root(Details::Table::create(capacity))
@@ -70,7 +68,7 @@ public:
                     return;
                 }
 
-                Value value = m_cell->value.load(std::memory_order_consume);
+                Value value = m_cell->value.loadAcquire();
                 if (value != Value(ValueTraits::Redirect)) {
                     // Found an existing value
                     m_value = value;
@@ -97,7 +95,7 @@ public:
                 }
                 case Details::InsertResult_AlreadyFound: {
                     // The hash was already found in the table.
-                    Value value = m_cell->value.load(std::memory_order_consume);
+                    Value value = m_cell->value.loadAcquire();
                     if (value == Value(ValueTraits::Redirect)) {
                         // We've encountered a Redirect value.
                         break; // Help finish the migration.
@@ -138,7 +136,7 @@ public:
 
             for (;;) {
                 Value oldValue = m_value;
-                if (m_cell->value.compare_exchange_strong(m_value, desired, std::memory_order_acq_rel)) {
+                if (m_cell->value.testAndSetOrdered(m_value, desired)) {
                     // Exchange was successful. Return previous value.
                     Value result = m_value;
                     m_value = desired; // Leave the mutator in a valid state
@@ -168,7 +166,7 @@ public:
 
                     switch (Details::insertOrFind(hash, m_table, m_cell, overflowIdx)) { // Modifies m_cell
                     case Details::InsertResult_AlreadyFound:
-                        m_value = m_cell->value.load(std::memory_order_consume);
+                        m_value = m_cell->value.loadAcquire();
                         if (m_value == Value(ValueTraits::Redirect)) {
                             break;
                         }
@@ -200,7 +198,7 @@ public:
                 }
 
                 Q_ASSERT(m_cell); // m_value is non-NullValue, therefore cell must have been found or inserted.
-                if (m_cell->value.compare_exchange_strong(m_value, Value(ValueTraits::NullValue), std::memory_order_consume)) {
+                if (m_cell->value.testAndSetAcquire(m_value, Value(ValueTraits::NullValue))) {
                     // Exchange was successful and a non-NULL value was erased and returned by reference in m_value.
                     Q_ASSERT(m_value != ValueTraits::NullValue); // Implied by the test at the start of the loop.
                     Value result = m_value;
@@ -229,7 +227,7 @@ public:
                         return m_value;
                     }
 
-                    m_value = m_cell->value.load(std::memory_order_relaxed);
+                    m_value = m_cell->value.load();
                     if (m_value != Value(ValueTraits::Redirect)) {
                         break;
                     }
@@ -259,7 +257,7 @@ public:
                 return Value(ValueTraits::NullValue);
             }
 
-            Value value = cell->value.load(std::memory_order_consume);
+            Value value = cell->value.loadAcquire();
             if (value != Value(ValueTraits::Redirect)) {
                 return value; // Found an existing value
             }
@@ -320,7 +318,7 @@ public:
 
                 if (m_hash != KeyTraits::NullHash) {
                     // Cell has been reserved.
-                    m_value = cell->value.load(std::memory_order_relaxed);
+                    m_value = cell->value.loadAcquire();
                     Q_ASSERT(m_value != Value(ValueTraits::Redirect));
                     if (m_value != Value(ValueTraits::NullValue)) {
                         return; // Yield this cell.

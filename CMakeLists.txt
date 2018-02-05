@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD 11)
 find_package(Qt5Core)
 
 set(HEADERS
+    "Atomic.h"
     "SimpleJobCoordinator.h"
     "QSBR.h" "QSBR.cpp"
     "MapTraits.h"

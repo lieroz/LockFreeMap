@@ -22,8 +22,8 @@ struct Leapfrog {
     Q_STATIC_ASSERT(CellsInUseSample > 0 && CellsInUseSample <= LinearSearchLimit); // Limit sample to failed search chain
 
     struct Cell {
-        QBasicAtomicInteger<Hash> hash;
-        std::atomic<Value> value;
+        Atomic<Hash> hash;
+        Atomic<Value> value;
     };
 
     struct CellGroup {
@@ -33,7 +33,7 @@ struct Leapfrog {
         // The first cell in the chain is the one that was hashed. It may or may not actually belong in the bucket.
         // The "second" cell in the chain is given by deltas 0 - 3. It's guaranteed to belong in the bucket.
         // All subsequent cells in the chain is given by deltas 4 - 7. Also guaranteed to belong in the bucket.
-        QBasicAtomicInteger<quint8> deltas[8];
+        Atomic<quint8> deltas[8];
         Cell cells[4];
     };
 
@@ -61,7 +61,7 @@ struct Leapfrog {
                     group->deltas[j].store(0);
                     group->deltas[j + 4].store(0);
                     group->cells[j].hash.store(KeyTraits::NullHash);
-                    group->cells[j].value.store(Value(ValueTraits::NullValue), std::memory_order_relaxed);
+                    group->cells[j].value.store(Value(ValueTraits::NullValue));
                 }
             }
 
@@ -90,14 +90,14 @@ struct Leapfrog {
     public:
         struct Source {
             Table* table;
-            QBasicAtomicInteger<quint64> sourceIndex;
+            Atomic<quint64> sourceIndex;
         };
 
         Map& m_map;
         Table* m_destination;
-        QBasicAtomicInteger<quint64> m_workerStatus; // number of workers + end flag
-        QBasicAtomicInteger<bool> m_overflowed;
-        QBasicAtomicInteger<qint64> m_unitsRemaining;
+        Atomic<quint64> m_workerStatus; // number of workers + end flag
+        Atomic<bool> m_overflowed;
+        Atomic<qint64> m_unitsRemaining;
         quint64 m_numSources;
 
         TableMigration(Map& map) : m_map(map)
@@ -210,7 +210,7 @@ struct Leapfrog {
         // Follow the link chain for this bucket.
         quint64 maxIdx = idx + sizeMask;
         quint64 linkLevel = 0;
-        QBasicAtomicInteger<quint8>* prevLink;
+        Atomic<quint8>* prevLink;
         for (;;) {
         followLink:
             prevLink = group->deltas + ((idx & 3) + linkLevel);
@@ -326,7 +326,7 @@ struct Leapfrog {
         for (quint64 linearProbesRemaining = CellsInUseSample; linearProbesRemaining > 0; linearProbesRemaining--) {
             CellGroup* group = table->getCellGroups() + ((idx & sizeMask) >> 2);
             Cell* cell = group->cells + (idx & 3);
-            Value value = cell->value.load(std::memory_order_relaxed);
+            Value value = cell->value.load();
 
             if (value == Value(ValueTraits::Redirect)) {
                 // Another thread kicked off the jobCoordinator. The caller will participate upon return.
@@ -366,7 +366,7 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
             if (srcHash == KeyTraits::NullHash) {
                 // An unused cell. Try to put a Redirect marker in its value.
                 Value expected = Value(ValueTraits::NullValue);
-                srcCell->value.compare_exchange_strong(expected, Value(ValueTraits::Redirect), std::memory_order_relaxed);
+                srcCell->value.testAndSetRelease(expected, Value(ValueTraits::Redirect));
                 srcValue = expected;
                 if (srcValue == Value(ValueTraits::Redirect)) {
                     // srcValue is already marked Redirect due to previous incomplete migration.
@@ -380,10 +380,10 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
                 // Otherwise, somebody just claimed the cell. Read srcHash again...
             } else {
                 // Check for deleted/uninitialized value.
-                srcValue = srcCell->value.load(std::memory_order_relaxed);
+                srcValue = srcCell->value.load();
                 if (srcValue == Value(ValueTraits::NullValue)) {
                     // Try to put a Redirect marker.
-                    if (srcCell->value.compare_exchange_strong(srcValue, Value(ValueTraits::Redirect), std::memory_order_relaxed)) {
+                    if (srcCell->value.testAndSetRelaxed(srcValue, Value(ValueTraits::Redirect))) {
                         break; // Redirect has been placed. Break inner loop, continue outer loop.
                     }
 
@@ -422,9 +422,9 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
                 // Migrate the old value to the new cell.
                 for (;;) {
                     // Copy srcValue to the destination.
-                    dstCell->value.store(srcValue, std::memory_order_relaxed);
+                    dstCell->value.store(srcValue);
                     // Try to place a Redirect marker in srcValue.
-                    srcCell->value.compare_exchange_strong(srcValue, Value(ValueTraits::Redirect), std::memory_order_relaxed);
+                    srcCell->value.testAndSetRelaxed(srcValue, Value(ValueTraits::Redirect));
                     Value doubleCheckedSrcValue = srcValue;
                     Q_ASSERT(doubleCheckedSrcValue != Value(ValueTraits::Redirect)); // Only one thread can redirect a cell at a time.
 

@@ -4,6 +4,7 @@
 #include <QMutex>
 #include <QWaitCondition>
 #include <QMutexLocker>
+#include <Atomic.h>
 
 class SimpleJobCoordinator
 {
@@ -17,7 +18,7 @@ public:
     };
 
 private:
-    QBasicAtomicInteger<quint64> m_job;
+    Atomic<quint64> m_job;
     QMutex mutex;
     QWaitCondition condVar;
 
