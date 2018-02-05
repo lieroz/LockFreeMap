@@ -51,7 +51,7 @@ struct Leapfrog {
         // The first cell in the chain is the one that was hashed. It may or may not actually belong in the bucket.
         // The "second" cell in the chain is given by deltas 0 - 3. It's guaranteed to belong in the bucket.
         // All subsequent cells in the chain is given by deltas 4 - 7. Also guaranteed to belong in the bucket.
-        turf::Atomic<quint8> deltas[8];
+        QBasicAtomicInteger<quint8> deltas[8];
         Cell cells[4];
     };
 
@@ -74,8 +74,8 @@ struct Leapfrog {
             for (quint64 i = 0; i < numGroups; i++) {
                 CellGroup* group = table->getCellGroups() + i;
                 for (quint64 j = 0; j < 4; j++) {
-                    group->deltas[j].storeNonatomic(0);
-                    group->deltas[j + 4].storeNonatomic(0);
+                    group->deltas[j].store(0);
+                    group->deltas[j + 4].store(0);
                     group->cells[j].hash.store(KeyTraits::NullHash);
                     group->cells[j].value.storeNonatomic(Value(ValueTraits::NullValue));
                 }
@@ -105,12 +105,12 @@ struct Leapfrog {
     public:
         struct Source {
             Table* table;
-            turf::Atomic<quint64> sourceIndex;
+            QBasicAtomicInteger<quint64> sourceIndex;
         };
 
         Map& m_map;
         Table* m_destination;
-        turf::Atomic<quint64> m_workerStatus; // number of workers + end flag
+        QBasicAtomicInteger<quint64> m_workerStatus; // number of workers + end flag
         turf::Atomic<bool> m_overflowed;
         turf::Atomic<qint64> m_unitsRemaining;
         quint64 m_numSources;
@@ -124,7 +124,7 @@ struct Leapfrog {
             TableMigration* migration =
                 (TableMigration*) std::malloc(sizeof(TableMigration) + sizeof(TableMigration::Source) * numSources);
             new(migration) TableMigration(map);
-            migration->m_workerStatus.storeNonatomic(0);
+            migration->m_workerStatus.store(0);
             migration->m_overflowed.storeNonatomic(false);
             migration->m_unitsRemaining.storeNonatomic(0);
             migration->m_numSources = numSources;
@@ -174,7 +174,7 @@ struct Leapfrog {
             return cell = NULL;
         }
         // Follow probe chain for our bucket
-        quint8 delta = group->deltas[idx & 3].load(turf::Relaxed);
+        quint8 delta = group->deltas[idx & 3].load();
         while (delta) {
             idx = (idx + delta) & sizeMask;
             group = table->getCellGroups() + (idx >> 2);
@@ -186,7 +186,7 @@ struct Leapfrog {
                 TURF_TRACE(Leapfrog, 2, "[find] found existing cell", quint64(table), idx);
                 return cell;
             }
-            delta = group->deltas[(idx & 3) + 4].load(turf::Relaxed);
+            delta = group->deltas[(idx & 3) + 4].load();
         }
         // End of probe chain, not found
         return NULL;
@@ -224,12 +224,12 @@ struct Leapfrog {
         // Follow the link chain for this bucket.
         quint64 maxIdx = idx + sizeMask;
         quint64 linkLevel = 0;
-        turf::Atomic<quint8>* prevLink;
+        QBasicAtomicInteger<quint8>* prevLink;
         for (;;) {
         followLink:
             prevLink = group->deltas + ((idx & 3) + linkLevel);
             linkLevel = 4;
-            quint8 probeDelta = prevLink->load(turf::Relaxed);
+            quint8 probeDelta = prevLink->load();
             if (probeDelta) {
                 idx += probeDelta;
                 // Check the hash for this cell.
@@ -268,7 +268,7 @@ struct Leapfrog {
                             TURF_TRACE(Leapfrog, 9, "[insertOrFind] reserved cell", quint64(table), idx);
                             TURF_ASSERT(probeDelta == 0);
                             quint8 desiredDelta = idx - prevLinkIdx;
-                            prevLink->store(desiredDelta, turf::Relaxed);
+                            prevLink->store(desiredDelta);
                             return InsertResult_InsertedNew;
                         } else {
                             TURF_TRACE(Leapfrog, 10, "[insertOrFind] race to reserve cell", quint64(table), idx);
@@ -289,7 +289,7 @@ struct Leapfrog {
                         // there's no guarantee that our own link chain will be well-formed by the time this function returns.
                         // (Indeed, subsequent lookups sometimes failed during testing, for this exact reason.)
                         quint8 desiredDelta = idx - prevLinkIdx;
-                        prevLink->store(desiredDelta, turf::Relaxed);
+                        prevLink->store(desiredDelta);
                         goto followLink; // Try to follow link chain for the bucket again.
                     }
                     // Continue linear search...
@@ -319,7 +319,7 @@ struct Leapfrog {
                 TableMigration* migration = TableMigration::create(map, 1);
                 migration->m_unitsRemaining.storeNonatomic(table->getNumMigrationUnits());
                 migration->getSources()[0].table = table;
-                migration->getSources()[0].sourceIndex.storeNonatomic(0);
+                migration->getSources()[0].sourceIndex.store(0);
                 migration->m_destination = Table::create(nextTableSize);
                 // Publish the new migration.
                 table->jobCoordinator.storeRelease(migration);
@@ -453,14 +453,14 @@ template <class Map>
 void Leapfrog<Map>::TableMigration::run()
 {
     // Conditionally increment the shared # of workers.
-    quint64 probeStatus = m_workerStatus.load(turf::Relaxed);
+    quint64 probeStatus = m_workerStatus.load();
     do {
         if (probeStatus & 1) {
             // End flag is already set, so do nothing.
             TURF_TRACE(Leapfrog, 26, "[TableMigration::run] already ended", quint64(this), 0);
             return;
         }
-    } while (!m_workerStatus.compareExchangeWeak(probeStatus, probeStatus + 2, turf::Relaxed, turf::Relaxed));
+    } while (!m_workerStatus.testAndSetRelaxed(probeStatus, probeStatus + 2));
     // # of workers has been incremented, and the end flag is clear.
     TURF_ASSERT((probeStatus & 1) == 0);
 
@@ -469,11 +469,11 @@ void Leapfrog<Map>::TableMigration::run()
         Source& source = getSources()[s];
         // Loop over all migration units in this source table.
         for (;;) {
-            if (m_workerStatus.load(turf::Relaxed) & 1) {
+            if (m_workerStatus.load() & 1) {
                 TURF_TRACE(Leapfrog, 27, "[TableMigration::run] detected end flag set", quint64(this), 0);
                 goto endMigration;
             }
-            quint64 startIdx = source.sourceIndex.fetchAdd(TableMigrationUnitSize, turf::Relaxed);
+            quint64 startIdx = source.sourceIndex.fetchAndAddRelaxed(TableMigrationUnitSize);
             if (startIdx >= source.table->sizeMask + 1)
                 break; // No more migration units in this table. Try next source table.
             bool overflowed = !migrateRange(source.table, startIdx);
@@ -491,7 +491,7 @@ void Leapfrog<Map>::TableMigration::run()
                 bool oldOverflowed = m_overflowed.exchange(overflowed, turf::Relaxed);
                 if (oldOverflowed)
                     TURF_TRACE(Leapfrog, 29, "[TableMigration::run] race to set m_overflowed", quint64(overflowed), quint64(oldOverflowed));
-                m_workerStatus.fetchOr(1, turf::Relaxed);
+                m_workerStatus.fetchAndOrRelaxed(1);
                 goto endMigration;
             }
             qint64 prevRemaining = m_unitsRemaining.fetchSub(1, turf::Relaxed);
@@ -499,7 +499,7 @@ void Leapfrog<Map>::TableMigration::run()
             if (prevRemaining == 1) {
                 // *** SUCCESSFUL MIGRATION ***
                 // That was the last chunk to migrate.
-                m_workerStatus.fetchOr(1, turf::Relaxed);
+                m_workerStatus.fetchAndOrRelaxed(1);
                 goto endMigration;
             }
         }
@@ -508,8 +508,7 @@ void Leapfrog<Map>::TableMigration::run()
 
 endMigration:
     // Decrement the shared # of workers.
-    probeStatus = m_workerStatus.fetchSub(
-                      2, turf::AcquireRelease); // AcquireRelease makes all previous writes visible to the last worker thread.
+    probeStatus = m_workerStatus.fetchAndSubOrdered(2); // AcquireRelease makes all previous writes visible to the last worker thread.
     if (probeStatus >= 4) {
         // There are other workers remaining. Return here so that only the very last worker will proceed.
         TURF_TRACE(Leapfrog, 31, "[TableMigration::run] not the last worker", quint64(this), quint64(probeStatus));
@@ -540,10 +539,10 @@ endMigration:
             for (quint64 i = 0; i < m_numSources; i++) {
                 migration->getSources()[i].table = getSources()[i].table;
                 getSources()[i].table = NULL;
-                migration->getSources()[i].sourceIndex.storeNonatomic(0);
+                migration->getSources()[i].sourceIndex.store(0);
             }
             migration->getSources()[m_numSources].table = m_destination;
-            migration->getSources()[m_numSources].sourceIndex.storeNonatomic(0);
+            migration->getSources()[m_numSources].sourceIndex.store(0);
             // Calculate total number of migration units to move.
             quint64 unitsRemaining = 0;
             for (quint64 s = 0; s < migration->m_numSources; s++)
