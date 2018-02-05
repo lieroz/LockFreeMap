@@ -2,7 +2,6 @@
 #define JUNCTION_DETAILS_LEAPFROG_H
 
 #include <Core.h>
-#include <Atomic.h>
 #include <Util.h>
 #include <MapTraits.h>
 #include <SimpleJobCoordinator.h>
