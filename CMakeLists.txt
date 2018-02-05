@@ -16,15 +16,12 @@ set(HEADERS
     "Mutex_CPP11.h"
     "ConditionVariable.h"
     "ConditionVariable_CPP11.h"
-    "ManualResetEvent.h"
-    "ManualResetEvent_CondVar.h"
     "SimpleJobCoordinator.h"
     "QSBR.h" "QSBR.cpp"
     "MapTraits.h"
     "Util.h"
     "Leapfrog.h"
-    "ConcurrentMap_Leapfrog.h"
-    "Mutex_SpinLock.h")
+    "ConcurrentMap_Leapfrog.h")
 
 add_executable(${PROJECT_NAME} "main.cpp" ${HEADERS})
 
