@@ -20,11 +20,6 @@
 #include <SimpleJobCoordinator.h>
 #include <QSBR.h>
 
-namespace junction
-{
-namespace details
-{
-
 template <class Map>
 struct Leapfrog {
     typedef typename Map::Hash Hash;
@@ -41,7 +36,7 @@ struct Leapfrog {
 
     struct Cell {
         QBasicAtomicInteger<Hash> hash;
-        turf::Atomic<Value> value;
+        Atomic<Value> value;
     };
 
     struct CellGroup {
@@ -255,7 +250,7 @@ struct Leapfrog {
                 // Switch to linear probing until we reserve a new cell or find a late-arriving cell in the same bucket.
                 quint64 prevLinkIdx = idx;
                 TURF_ASSERT(qint64(maxIdx - idx) >= 0); // Nobody would have linked an idx that's out of range.
-                quint64 linearProbesRemaining = turf::util::min(maxIdx - idx, LinearSearchLimit);
+                quint64 linearProbesRemaining = min(maxIdx - idx, LinearSearchLimit);
                 while (linearProbesRemaining-- > 0) {
                     idx++;
                     group = table->getCellGroups() + ((idx & sizeMask) >> 2);
@@ -336,7 +331,7 @@ struct Leapfrog {
         for (quint64 linearProbesRemaining = CellsInUseSample; linearProbesRemaining > 0; linearProbesRemaining--) {
             CellGroup* group = table->getCellGroups() + ((idx & sizeMask) >> 2);
             Cell* cell = group->cells + (idx & 3);
-            Value value = cell->value.load(turf::Relaxed);
+            Value value = cell->value.load(Relaxed);
             if (value == Value(ValueTraits::Redirect)) {
                 // Another thread kicked off the jobCoordinator. The caller will participate upon return.
                 TURF_TRACE(Leapfrog, 18, "[beginTableMigration] redirected while determining table size", 0, 0);
@@ -348,7 +343,7 @@ struct Leapfrog {
         }
         float inUseRatio = float(inUseCells) / CellsInUseSample;
         float estimatedInUse = (sizeMask + 1) * inUseRatio;
-        quint64 nextTableSize = turf::util::max(InitialSize, turf::util::roundUpPowerOf2(quint64(estimatedInUse * 2)));
+        quint64 nextTableSize = max(InitialSize, roundUpPowerOf2(quint64(estimatedInUse * 2)));
         beginTableMigrationToSize(map, table, nextTableSize);
     }
 }; // Leapfrog
@@ -357,7 +352,7 @@ template <class Map>
 bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startIdx)
 {
     quint64 srcSizeMask = srcTable->sizeMask;
-    quint64 endIdx = turf::util::min(startIdx + TableMigrationUnitSize, srcSizeMask + 1);
+    quint64 endIdx = min(startIdx + TableMigrationUnitSize, srcSizeMask + 1);
     // Iterate over source range.
     for (quint64 srcIdx = startIdx; srcIdx < endIdx; srcIdx++) {
         CellGroup* srcGroup = srcTable->getCellGroups() + ((srcIdx & srcSizeMask) >> 2);
@@ -370,7 +365,7 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
             if (srcHash == KeyTraits::NullHash) {
                 // An unused cell. Try to put a Redirect marker in its value.
                 srcValue =
-                    srcCell->value.compareExchange(Value(ValueTraits::NullValue), Value(ValueTraits::Redirect), turf::Relaxed);
+                    srcCell->value.compareExchange(Value(ValueTraits::NullValue), Value(ValueTraits::Redirect), Relaxed);
                 if (srcValue == Value(ValueTraits::Redirect)) {
                     // srcValue is already marked Redirect due to previous incomplete migration.
                     TURF_TRACE(Leapfrog, 19, "[migrateRange] empty cell already redirected", quint64(srcTable), srcIdx);
@@ -382,10 +377,10 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
                 // Otherwise, somebody just claimed the cell. Read srcHash again...
             } else {
                 // Check for deleted/uninitialized value.
-                srcValue = srcCell->value.load(turf::Relaxed);
+                srcValue = srcCell->value.load(Relaxed);
                 if (srcValue == Value(ValueTraits::NullValue)) {
                     // Try to put a Redirect marker.
-                    if (srcCell->value.compareExchangeStrong(srcValue, Value(ValueTraits::Redirect), turf::Relaxed))
+                    if (srcCell->value.compareExchangeStrong(srcValue, Value(ValueTraits::Redirect), Relaxed))
                         break; // Redirect has been placed. Break inner loop, continue outer loop.
                     TURF_TRACE(Leapfrog, 21, "[migrateRange] race to insert value", quint64(srcTable), srcIdx);
                     if (srcValue == Value(ValueTraits::Redirect)) {
@@ -423,10 +418,10 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
                 // Migrate the old value to the new cell.
                 for (;;) {
                     // Copy srcValue to the destination.
-                    dstCell->value.store(srcValue, turf::Relaxed);
+                    dstCell->value.store(srcValue, Relaxed);
                     // Try to place a Redirect marker in srcValue.
                     Value doubleCheckedSrcValue =
-                        srcCell->value.compareExchange(srcValue, Value(ValueTraits::Redirect), turf::Relaxed);
+                        srcCell->value.compareExchange(srcValue, Value(ValueTraits::Redirect), Relaxed);
                     TURF_ASSERT(doubleCheckedSrcValue != Value(ValueTraits::Redirect)); // Only one thread can redirect a cell at a time.
                     if (doubleCheckedSrcValue == srcValue) {
                         // No racing writes to the src. We've successfully placed the Redirect marker.
@@ -557,8 +552,5 @@ endMigration:
     // We're done with this TableMigration. Queue it for GC.
     DefaultQSBR.enqueue(&TableMigration::destroy, this);
 }
-
-} // namespace details
-} // namespace junction
 
 #endif // JUNCTION_DETAILS_LEAPFROG_H

@@ -20,9 +20,6 @@
 #include <QMutex>
 #include <QMutexLocker>
 
-namespace junction
-{
-
 class QSBR
 {
 private:
@@ -32,7 +29,7 @@ private:
 
         Action(void (*f)(void*), void* p, quint64 paramSize) : func(f)
         {
-//            TURF_ASSERT(paramSize <= sizeof(param)); // Verify size limit.
+            TURF_ASSERT(paramSize <= sizeof(param)); // Verify size limit.
             memcpy(&param, p, paramSize);
         }
         void operator()()
@@ -92,7 +89,5 @@ public:
 };
 
 extern QSBR DefaultQSBR;
-
-} // junction
 
 #endif // JUNCTION_QSBR_H

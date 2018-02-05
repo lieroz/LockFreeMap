@@ -15,10 +15,6 @@
 
 #include <atomic>
 
-// Alias it:
-namespace turf
-{
-
 inline void signalFenceConsume()
 {
     std::atomic_signal_fence(std::memory_order_acquire);
@@ -130,7 +126,5 @@ public:
         return std::atomic<T>::fetch_or(operand, (std::memory_order) memoryOrder);
     }
 };
-
-} // namespace turf
 
 #endif // TURF_ATOMIC_H

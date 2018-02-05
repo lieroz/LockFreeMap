@@ -13,12 +13,10 @@
 #ifndef JUNCTION_SIMPLEJOBCOORDINATOR_H
 #define JUNCTION_SIMPLEJOBCOORDINATOR_H
 
+#include <Core.h>
 #include <QMutex>
 #include <QWaitCondition>
 #include <QMutexLocker>
-
-namespace junction
-{
 
 class SimpleJobCoordinator
 {
@@ -77,7 +75,7 @@ public:
 
     void runOne(Job* job)
     {
-//        TURF_ASSERT(job != (Job*) m_job.load(turf::Relaxed));
+        TURF_ASSERT(job != (Job*) m_job.load());
         storeRelease(job);
         job->run();
     }
@@ -91,7 +89,5 @@ public:
         condVar.wakeAll();
     }
 };
-
-} // namespace junction
 
 #endif // JUNCTION_SIMPLEJOBCOORDINATOR_H

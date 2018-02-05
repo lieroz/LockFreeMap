@@ -19,33 +19,35 @@
 
 #include <QAtomicPointer>
 
-namespace junction {
-
 template <typename K, typename V, class KT = DefaultKeyTraits<K>, class VT = DefaultValueTraits<V> >
-class ConcurrentMap_Leapfrog {
+class ConcurrentMap_Leapfrog
+{
 public:
     typedef K Key;
     typedef V Value;
     typedef KT KeyTraits;
     typedef VT ValueTraits;
-    typedef typename turf::util::BestFit<Key>::Unsigned Hash;
-    typedef details::Leapfrog<ConcurrentMap_Leapfrog> Details;
+    typedef typename BestFit<Key>::Unsigned Hash;
+    typedef Leapfrog<ConcurrentMap_Leapfrog> Details;
 
 private:
     QAtomicPointer<typename Details::Table> m_root;
 
 public:
-    ConcurrentMap_Leapfrog(quint64 capacity = Details::InitialSize) : m_root(Details::Table::create(capacity)) {
+    ConcurrentMap_Leapfrog(quint64 capacity = Details::InitialSize) : m_root(Details::Table::create(capacity))
+    {
     }
 
-    ~ConcurrentMap_Leapfrog() {
+    ~ConcurrentMap_Leapfrog()
+    {
         typename Details::Table* table = m_root.load();
         table->destroy();
     }
 
     // publishTableMigration() is called by exactly one thread from Details::TableMigration::run()
     // after all the threads participating in the migration have completed their work.
-    void publishTableMigration(typename Details::TableMigration* migration) {
+    void publishTableMigration(typename Details::TableMigration* migration)
+    {
         // There are no racing calls to this function.
         typename Details::Table* oldRoot = m_root.load();
         m_root.storeRelease(migration->m_destination);
@@ -61,7 +63,8 @@ public:
     // Note that even if the Mutator was constructed from an existing cell,
     // exchangeValue() can still trigger a resize if the existing cell was previously marked deleted,
     // or if another thread deletes the key between the two steps.
-    class Mutator {
+    class Mutator
+    {
     private:
         friend class ConcurrentMap_Leapfrog;
 
@@ -71,7 +74,8 @@ public:
         Value m_value;
 
         // Constructor: Find existing cell
-        Mutator(ConcurrentMap_Leapfrog& map, Key key, bool) : m_map(map), m_value(Value(ValueTraits::NullValue)) {
+        Mutator(ConcurrentMap_Leapfrog& map, Key key, bool) : m_map(map), m_value(Value(ValueTraits::NullValue))
+        {
             TURF_TRACE(ConcurrentMap_Leapfrog, 0, "[Mutator] find constructor called", quint64(0), quint64(key));
             Hash hash = KeyTraits::hash(key);
             for (;;) {
@@ -79,7 +83,7 @@ public:
                 m_cell = Details::find(hash, m_table);
                 if (!m_cell)
                     return;
-                Value value = m_cell->value.load(turf::Consume);
+                Value value = m_cell->value.load(Consume);
                 if (value != Value(ValueTraits::Redirect)) {
                     // Found an existing value
                     m_value = value;
@@ -93,7 +97,8 @@ public:
         }
 
         // Constructor: Insert or find cell
-        Mutator(ConcurrentMap_Leapfrog& map, Key key) : m_map(map), m_value(Value(ValueTraits::NullValue)) {
+        Mutator(ConcurrentMap_Leapfrog& map, Key key) : m_map(map), m_value(Value(ValueTraits::NullValue))
+        {
             TURF_TRACE(ConcurrentMap_Leapfrog, 2, "[Mutator] insertOrFind constructor called", quint64(0), quint64(key));
             Hash hash = KeyTraits::hash(key);
             for (;;) {
@@ -106,7 +111,7 @@ public:
                 }
                 case Details::InsertResult_AlreadyFound: {
                     // The hash was already found in the table.
-                    Value value = m_cell->value.load(turf::Consume);
+                    Value value = m_cell->value.load(Consume);
                     if (value == Value(ValueTraits::Redirect)) {
                         // We've encountered a Redirect value.
                         TURF_TRACE(ConcurrentMap_Leapfrog, 3, "[Mutator] insertOrFind was redirected", quint64(m_table), quint64(m_value));
@@ -114,7 +119,7 @@ public:
                     }
                     // Found an existing value
                     m_value = value;
-                    return; 
+                    return;
                 }
                 case Details::InsertResult_Overflow: {
                     // Unlike ConcurrentMap_Linear, we don't need to keep track of & pass a "mustDouble" flag.
@@ -134,19 +139,21 @@ public:
         }
 
     public:
-        Value getValue() const {
+        Value getValue() const
+        {
             // Return previously loaded value. Don't load it again.
             return Value(m_value);
         }
 
-        Value exchangeValue(Value desired) {
+        Value exchangeValue(Value desired)
+        {
             TURF_ASSERT(desired != Value(ValueTraits::NullValue));
             TURF_ASSERT(desired != Value(ValueTraits::Redirect));
             TURF_ASSERT(m_cell); // Cell must have been found or inserted
             TURF_TRACE(ConcurrentMap_Leapfrog, 4, "[Mutator::exchangeValue] called", quint64(m_table), quint64(m_value));
             for (;;) {
                 Value oldValue = m_value;
-                if (m_cell->value.compareExchangeStrong(m_value, desired, turf::ConsumeRelease)) {
+                if (m_cell->value.compareExchangeStrong(m_value, desired, ConsumeRelease)) {
                     // Exchange was successful. Return previous value.
                     TURF_TRACE(ConcurrentMap_Leapfrog, 5, "[Mutator::exchangeValue] exchanged Value", quint64(m_value), quint64(desired));
                     Value result = m_value;
@@ -175,7 +182,7 @@ public:
                     quint64 overflowIdx;
                     switch (Details::insertOrFind(hash, m_table, m_cell, overflowIdx)) { // Modifies m_cell
                     case Details::InsertResult_AlreadyFound:
-                        m_value = m_cell->value.load(turf::Consume);
+                        m_value = m_cell->value.load(Consume);
                         if (m_value == Value(ValueTraits::Redirect)) {
                             TURF_TRACE(ConcurrentMap_Leapfrog, 9, "[Mutator::exchangeValue] was re-redirected", quint64(m_table), quint64(m_value));
                             break;
@@ -195,18 +202,20 @@ public:
             }
         }
 
-        void assignValue(Value desired) {
+        void assignValue(Value desired)
+        {
             exchangeValue(desired);
         }
 
-        Value eraseValue() {
+        Value eraseValue()
+        {
             TURF_ASSERT(m_cell); // Cell must have been found or inserted
             TURF_TRACE(ConcurrentMap_Leapfrog, 11, "[Mutator::eraseValue] called", quint64(m_table), quint64(m_cell));
             for (;;) {
                 if (m_value == Value(ValueTraits::NullValue))
                     return Value(m_value);
                 TURF_ASSERT(m_cell); // m_value is non-NullValue, therefore cell must have been found or inserted.
-                if (m_cell->value.compareExchangeStrong(m_value, Value(ValueTraits::NullValue), turf::Consume)) {
+                if (m_cell->value.compareExchangeStrong(m_value, Value(ValueTraits::NullValue), Consume)) {
                     // Exchange was successful and a non-NULL value was erased and returned by reference in m_value.
                     TURF_ASSERT(m_value != ValueTraits::NullValue); // Implied by the test at the start of the loop.
                     Value result = m_value;
@@ -233,7 +242,7 @@ public:
                         m_value = Value(ValueTraits::NullValue);
                         return m_value;
                     }
-                    m_value = m_cell->value.load(turf::Relaxed);
+                    m_value = m_cell->value.load(Relaxed);
                     if (m_value != Value(ValueTraits::Redirect))
                         break;
                     TURF_TRACE(ConcurrentMap_Leapfrog, 14, "[Mutator::eraseValue] was re-redirected", quint64(m_table), quint64(m_cell));
@@ -242,16 +251,19 @@ public:
         }
     };
 
-    Mutator insertOrFind(Key key) {
+    Mutator insertOrFind(Key key)
+    {
         return Mutator(*this, key);
     }
 
-    Mutator find(Key key) {
+    Mutator find(Key key)
+    {
         return Mutator(*this, key, false);
     }
 
     // Lookup without creating a temporary Mutator.
-    Value get(Key key) {
+    Value get(Key key)
+    {
         Hash hash = KeyTraits::hash(key);
         TURF_TRACE(ConcurrentMap_Leapfrog, 15, "[get] called", quint64(this), quint64(hash));
         for (;;) {
@@ -259,7 +271,7 @@ public:
             typename Details::Cell* cell = Details::find(hash, table);
             if (!cell)
                 return Value(ValueTraits::NullValue);
-            Value value = cell->value.load(turf::Consume);
+            Value value = cell->value.load(Consume);
             if (value != Value(ValueTraits::Redirect))
                 return value; // Found an existing value
             // We've been redirected to a new table. Help with the migration.
@@ -269,17 +281,20 @@ public:
         }
     }
 
-    Value assign(Key key, Value desired) {
+    Value assign(Key key, Value desired)
+    {
         Mutator iter(*this, key);
         return iter.exchangeValue(desired);
     }
 
-    Value exchange(Key key, Value desired) {
+    Value exchange(Key key, Value desired)
+    {
         Mutator iter(*this, key);
         return iter.exchangeValue(desired);
     }
 
-    Value erase(Key key) {
+    Value erase(Key key)
+    {
         Mutator iter(*this, key, false);
         return iter.eraseValue();
     }
@@ -287,7 +302,8 @@ public:
     // The easiest way to implement an Iterator is to prevent all Redirects.
     // The currrent Iterator does that by forbidding concurrent inserts.
     // To make it work with concurrent inserts, we'd need a way to block TableMigrations.
-    class Iterator {
+    class Iterator
+    {
     private:
         typename Details::Table* m_table;
         quint64 m_idx;
@@ -295,14 +311,16 @@ public:
         Value m_value;
 
     public:
-        Iterator(ConcurrentMap_Leapfrog& map) {
+        Iterator(ConcurrentMap_Leapfrog& map)
+        {
             // Since we've forbidden concurrent inserts (for now), nonatomic would suffice here, but let's plan ahead:
             m_table = map.m_root.loadAcquire();
             m_idx = -1;
             next();
         }
 
-        void next() {
+        void next()
+        {
             TURF_ASSERT(m_table);
             TURF_ASSERT(isValid() || m_idx == -1); // Either the Iterator is already valid, or we've just started iterating.
             while (++m_idx <= m_table->sizeMask) {
@@ -312,7 +330,7 @@ public:
                 m_hash = cell->hash.load();
                 if (m_hash != KeyTraits::NullHash) {
                     // Cell has been reserved.
-                    m_value = cell->value.load(turf::Relaxed);
+                    m_value = cell->value.load(Relaxed);
                     TURF_ASSERT(m_value != Value(ValueTraits::Redirect));
                     if (m_value != Value(ValueTraits::NullValue))
                         return; // Yield this cell.
@@ -323,23 +341,24 @@ public:
             m_value = Value(ValueTraits::NullValue);
         }
 
-        bool isValid() const {
+        bool isValid() const
+        {
             return m_value != Value(ValueTraits::NullValue);
         }
 
-        Key getKey() const {
+        Key getKey() const
+        {
             TURF_ASSERT(isValid());
             // Since we've forbidden concurrent inserts (for now), nonatomic would suffice here, but let's plan ahead:
             return KeyTraits::dehash(m_hash);
         }
 
-        Value getValue() const {
+        Value getValue() const
+        {
             TURF_ASSERT(isValid());
             return m_value;
         }
     };
 };
-
-} // namespace junction
 
 #endif // JUNCTION_CONCURRENTMAP_LEAPFROG_H

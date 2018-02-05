@@ -15,30 +15,26 @@
 
 #include <Util.h>
 
-namespace junction {
-
 template <class T>
 struct DefaultKeyTraits {
     typedef T Key;
-    typedef typename turf::util::BestFit<T>::Unsigned Hash;
+    typedef typename BestFit<T>::Unsigned Hash;
     static const Key NullKey = Key(0);
     static const Hash NullHash = Hash(0);
     static Hash hash(T key) {
-        return turf::util::avalanche(Hash(key));
+        return avalanche(Hash(key));
     }
     static Key dehash(Hash hash) {
-        return (T) turf::util::deavalanche(hash);
+        return (T) deavalanche(hash);
     }
 };
 
 template <class T>
 struct DefaultValueTraits {
     typedef T Value;
-    typedef typename turf::util::BestFit<T>::Unsigned IntType;
+    typedef typename BestFit<T>::Unsigned IntType;
     static const IntType NullValue = 0;
     static const IntType Redirect = 1;
 };
-
-} // namespace junction
 
 #endif // JUNCTION_MAPTRAITS_H

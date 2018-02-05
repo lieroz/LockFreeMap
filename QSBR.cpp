@@ -12,9 +12,6 @@
 
 #include <QSBR.h>
 
-namespace junction
-{
-
 QSBR DefaultQSBR;
 
 QSBR::Context QSBR::createContext()
@@ -22,11 +19,11 @@ QSBR::Context QSBR::createContext()
     QMutexLocker guard(&m_mutex);
     m_numContexts++;
     m_remaining++;
-//    TURF_ASSERT(m_numContexts < (1 << 14));
+    TURF_ASSERT(m_numContexts < (1 << 14));
     qint64 context = m_freeIndex;
     if (context >= 0) {
-//        TURF_ASSERT(context < (qint64) m_status.size());
-//        TURF_ASSERT(!m_status[context].inUse);
+        TURF_ASSERT(context < (qint64) m_status.size());
+        TURF_ASSERT(!m_status[context].inUse);
         m_freeIndex = m_status[context].nextFree;
         m_status[context] = Status();
     } else {
@@ -41,9 +38,9 @@ void QSBR::destroyContext(QSBR::Context context)
     std::vector<Action> actions;
     {
         QMutexLocker guard(&m_mutex);
-//        TURF_ASSERT(context < m_status.size());
+        TURF_ASSERT(context < m_status.size());
         if (m_status[context].inUse && !m_status[context].wasIdle) {
-//            TURF_ASSERT(m_remaining > 0);
+            TURF_ASSERT(m_remaining > 0);
             --m_remaining;
         }
         m_status[context].inUse = 0;
@@ -72,13 +69,13 @@ void QSBR::update(QSBR::Context context)
     std::vector<Action> actions;
     {
         QMutexLocker guard(&m_mutex);
-//        TURF_ASSERT(context < m_status.size());
+        TURF_ASSERT(context < m_status.size());
         Status& status = m_status[context];
-//        TURF_ASSERT(status.inUse);
+        TURF_ASSERT(status.inUse);
         if (status.wasIdle)
             return;
         status.wasIdle = 1;
-//        TURF_ASSERT(m_remaining > 0);
+        TURF_ASSERT(m_remaining > 0);
         if (--m_remaining > 0)
             return;
         onAllQuiescentStatesPassed(actions);
@@ -100,5 +97,3 @@ void QSBR::flush()
     m_deferredActions.clear();
     m_remaining = m_numContexts;
 }
-
-} // namespace junction

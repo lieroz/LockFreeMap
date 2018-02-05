@@ -7,7 +7,7 @@
 #define NUM_CYCLES 1000000
 
 // Create the map.
-typedef junction::ConcurrentMap_Leapfrog<int, int> ConcurrentMap;
+typedef ConcurrentMap_Leapfrog<int, int> ConcurrentMap;
 ConcurrentMap map;
 
 void testMap(int m_arg)
@@ -26,7 +26,7 @@ void testMap(int m_arg)
 int main()
 {
     // Create QSBR context for the main thread.
-    junction::QSBR::Context context = junction::DefaultQSBR.createContext();
+    QSBR::Context context = DefaultQSBR.createContext();
 
     std::vector<std::thread> threads(NUM_INTS);
 
@@ -41,9 +41,9 @@ int main()
     // In a larger application, this should be called periodically, for each thread, at a moment
     // when the thread is quiescent – that is, not in the middle of any operation that uses a
     // Junction data structure.
-    junction::DefaultQSBR.update(context);
+    DefaultQSBR.update(context);
 
     // Destroy the QSBR context for the main thread.
-    junction::DefaultQSBR.destroyContext(context);
+    DefaultQSBR.destroyContext(context);
     return 0;
 }

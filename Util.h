@@ -15,11 +15,6 @@
 
 #include <Core.h>
 
-namespace turf
-{
-namespace util
-{
-
 template <typename T>
 struct BestFit;
 
@@ -162,8 +157,5 @@ inline quint64 deavalanche(quint64 h)
     h ^= h >> 33;
     return h;
 }
-
-} // namespace util
-} // namespace turf
 
 #endif // TURF_UTIL_H
