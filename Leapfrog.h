@@ -111,8 +111,8 @@ struct Leapfrog {
         Map& m_map;
         Table* m_destination;
         QBasicAtomicInteger<quint64> m_workerStatus; // number of workers + end flag
-        turf::Atomic<bool> m_overflowed;
-        turf::Atomic<qint64> m_unitsRemaining;
+        QBasicAtomicInteger<bool> m_overflowed;
+        QBasicAtomicInteger<qint64> m_unitsRemaining;
         quint64 m_numSources;
 
         TableMigration(Map& map) : m_map(map)
@@ -125,8 +125,8 @@ struct Leapfrog {
                 (TableMigration*) std::malloc(sizeof(TableMigration) + sizeof(TableMigration::Source) * numSources);
             new(migration) TableMigration(map);
             migration->m_workerStatus.store(0);
-            migration->m_overflowed.storeNonatomic(false);
-            migration->m_unitsRemaining.storeNonatomic(0);
+            migration->m_overflowed.store(false);
+            migration->m_unitsRemaining.store(0);
             migration->m_numSources = numSources;
             // Caller is responsible for filling in sources & destination
             return migration;
@@ -317,7 +317,7 @@ struct Leapfrog {
             } else {
                 // Create new migration.
                 TableMigration* migration = TableMigration::create(map, 1);
-                migration->m_unitsRemaining.storeNonatomic(table->getNumMigrationUnits());
+                migration->m_unitsRemaining.store(table->getNumMigrationUnits());
                 migration->getSources()[0].table = table;
                 migration->getSources()[0].sourceIndex.store(0);
                 migration->m_destination = Table::create(nextTableSize);
@@ -488,13 +488,14 @@ void Leapfrog<Map>::TableMigration::run()
                 // we can safely deal with the overflow. Therefore, the thread that detects the failure is often different from
                 // the thread
                 // that deals with it.
-                bool oldOverflowed = m_overflowed.exchange(overflowed, turf::Relaxed);
+                bool oldOverflowed = m_overflowed.load();
+                m_overflowed.store(overflowed);
                 if (oldOverflowed)
                     TURF_TRACE(Leapfrog, 29, "[TableMigration::run] race to set m_overflowed", quint64(overflowed), quint64(oldOverflowed));
                 m_workerStatus.fetchAndOrRelaxed(1);
                 goto endMigration;
             }
-            qint64 prevRemaining = m_unitsRemaining.fetchSub(1, turf::Relaxed);
+            qint64 prevRemaining = m_unitsRemaining.fetchAndSubRelaxed(1);
             TURF_ASSERT(prevRemaining > 0);
             if (prevRemaining == 1) {
                 // *** SUCCESSFUL MIGRATION ***
@@ -518,7 +519,7 @@ endMigration:
     // We're the very last worker thread.
     // Perform the appropriate post-migration step depending on whether the migration succeeded or failed.
     TURF_ASSERT(probeStatus == 3);
-    bool overflowed = m_overflowed.loadNonatomic(); // No racing writes at this point
+    bool overflowed = m_overflowed.load(); // No racing writes at this point
     if (!overflowed) {
         // The migration succeeded. This is the most likely outcome. Publish the new subtree.
         m_map.publishTableMigration(this);
@@ -547,7 +548,7 @@ endMigration:
             quint64 unitsRemaining = 0;
             for (quint64 s = 0; s < migration->m_numSources; s++)
                 unitsRemaining += migration->getSources()[s].table->getNumMigrationUnits();
-            migration->m_unitsRemaining.storeNonatomic(unitsRemaining);
+            migration->m_unitsRemaining.store(unitsRemaining);
             // Publish the new migration.
             origTable->jobCoordinator.storeRelease(migration);
         }
