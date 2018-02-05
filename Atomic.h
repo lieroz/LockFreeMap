@@ -135,6 +135,26 @@ public:
         this->m_value.storeRelease(newValue);
     }
 
+    T compareExchangeRelaxed(T expectedValue, T newValue) {
+        this->m_value.testAndSetRelaxed(expectedValue, newValue);
+        return expectedValue;
+    }
+
+    T compareExchangeAcquire(T expectedValue, T newValue) {
+        this->m_value.testAndSetAcquire(expectedValue, newValue);
+        return expectedValue;
+    }
+
+    T compareExchangeRelease(T expectedValue, T newValue) {
+        this->m_value.testAndSetRelease(expectedValue, newValue);
+        return expectedValue;
+    }
+
+    T compareExchangeOrdered(T expectedValue, T newValue) {
+        this->m_value.testAndSetOrdered(expectedValue, newValue);
+        return expectedValue;
+    }
+
     bool testAndSetRelaxed(T expectedValue, T newValue)
     {
         return this->m_value.testAndSetRelaxed(expectedValue, newValue);

@@ -365,9 +365,7 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
             srcHash = srcCell->hash.load();
             if (srcHash == KeyTraits::NullHash) {
                 // An unused cell. Try to put a Redirect marker in its value.
-                Value expected = Value(ValueTraits::NullValue);
-                srcCell->value.testAndSetRelease(expected, Value(ValueTraits::Redirect));
-                srcValue = expected;
+                srcValue = srcCell->value.compareExchangeRelaxed(Value(ValueTraits::NullValue), Value(ValueTraits::Redirect));
                 if (srcValue == Value(ValueTraits::Redirect)) {
                     // srcValue is already marked Redirect due to previous incomplete migration.
                     break;
@@ -424,8 +422,7 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
                     // Copy srcValue to the destination.
                     dstCell->value.store(srcValue);
                     // Try to place a Redirect marker in srcValue.
-                    srcCell->value.testAndSetRelaxed(srcValue, Value(ValueTraits::Redirect));
-                    Value doubleCheckedSrcValue = srcValue;
+                    Value doubleCheckedSrcValue = srcCell->value.compareExchangeRelaxed(srcValue, Value(ValueTraits::Redirect));
                     Q_ASSERT(doubleCheckedSrcValue != Value(ValueTraits::Redirect)); // Only one thread can redirect a cell at a time.
 
                     if (doubleCheckedSrcValue == srcValue) {

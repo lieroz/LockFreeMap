@@ -14,18 +14,25 @@ struct Foo {
 typedef ConcurrentMap_Leapfrog<int, Foo*> ConcurrentMap;
 ConcurrentMap map;
 
-class MyRunnable : public QRunnable {
+class MyRunnable : public QRunnable
+{
 protected:
-    void run() override {
+    void run() override
+    {
+        QSBR::Context context = DefaultQSBR.createContext();
+
         for (int j = 0; j < NUM_CYCLES; j++) {
             const int index = j % (8 * NUM_INTS);
             map.insertOrFind(index + 1);
             map.assign(index + 1, new Foo);
 
             if (j % 10000 == 0) {
+                DefaultQSBR.update(context);
                 qDebug() << j;
             }
         }
+
+        DefaultQSBR.destroyContext(context);
     }
 };
 
