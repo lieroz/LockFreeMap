@@ -1,3 +1,13 @@
+/*------------------------------------------------------------------------
+  Junction: Concurrent data structures in C++
+  Copyright (c) 2016 Jeff Preshing
+  Distributed under the Simplified BSD License.
+  Original location: https://github.com/preshing/junction
+  This software is distributed WITHOUT ANY WARRANTY; without even the
+  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+  See the LICENSE file for more information.
+------------------------------------------------------------------------*/
+
 #ifndef SIMPLEJOBCOORDINATOR_H
 #define SIMPLEJOBCOORDINATOR_H
 
@@ -29,14 +39,14 @@ public:
 
     Job* loadConsume() const
     {
-        return (Job*) m_job.loadAcquire();
+        return (Job*) m_job.load(Consume);
     }
 
     void storeRelease(Job* job)
     {
         {
             QMutexLocker guard(&mutex);
-            m_job.storeRelease(quint64(job));
+            m_job.store(quint64(job), Release);
         }
 
         condVar.wakeAll();
@@ -47,12 +57,12 @@ public:
         quint64 prevJob = quint64(NULL);
 
         for (;;) {
-            quint64 job = m_job.loadAcquire();
+            quint64 job = m_job.load(Consume);
             if (job == prevJob) {
                 QMutexLocker guard(&mutex);
 
                 for (;;) {
-                    job = m_job.load(); // No concurrent writes inside lock
+                    job = m_job.loadNonatomic(); // No concurrent writes inside lock
                     if (job != prevJob) {
                         break;
                     }
@@ -72,7 +82,7 @@ public:
 
     void runOne(Job* job)
     {
-        Q_ASSERT(job != (Job*) m_job.load());
+        Q_ASSERT(job != (Job*) m_job.load(Relaxed));
         storeRelease(job);
         job->run();
     }
@@ -81,7 +91,7 @@ public:
     {
         {
             QMutexLocker guard(&mutex);
-            m_job.storeRelease(1);
+            m_job.store(1, Release);
         }
 
         condVar.wakeAll();

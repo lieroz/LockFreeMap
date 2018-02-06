@@ -1,3 +1,13 @@
+/*------------------------------------------------------------------------
+  Junction: Concurrent data structures in C++
+  Copyright (c) 2016 Jeff Preshing
+  Distributed under the Simplified BSD License.
+  Original location: https://github.com/preshing/junction
+  This software is distributed WITHOUT ANY WARRANTY; without even the
+  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+  See the LICENSE file for more information.
+------------------------------------------------------------------------*/
+
 #ifndef LEAPFROG_H
 #define LEAPFROG_H
 
@@ -58,13 +68,12 @@ struct Leapfrog {
                 CellGroup* group = table->getCellGroups() + i;
 
                 for (quint64 j = 0; j < 4; j++) {
-                    group->deltas[j].store(0);
-                    group->deltas[j + 4].store(0);
-                    group->cells[j].hash.store(KeyTraits::NullHash);
-                    group->cells[j].value.store(Value(ValueTraits::NullValue));
+                    group->deltas[j].storeNonatomic(0);
+                    group->deltas[j + 4].storeNonatomic(0);
+                    group->cells[j].hash.storeNonatomic(KeyTraits::NullHash);
+                    group->cells[j].value.storeNonatomic(Value(ValueTraits::NullValue));
                 }
             }
-
             return table;
         }
 
@@ -110,9 +119,9 @@ struct Leapfrog {
                 (TableMigration*) std::malloc(sizeof(TableMigration) + sizeof(TableMigration::Source) * numSources);
             new(migration) TableMigration(map);
 
-            migration->m_workerStatus.store(0);
-            migration->m_overflowed.store(false);
-            migration->m_unitsRemaining.store(0);
+            migration->m_workerStatus.storeNonatomic(0);
+            migration->m_overflowed.storeNonatomic(false);
+            migration->m_unitsRemaining.storeNonatomic(0);
             migration->m_numSources = numSources;
             // Caller is responsible for filling in sources & destination
             return migration;
@@ -125,12 +134,9 @@ struct Leapfrog {
         void destroy()
         {
             // Destroy all source tables.
-            for (quint64 i = 0; i < m_numSources; i++) {
-                if (getSources()[i].table) {
+            for (quint64 i = 0; i < m_numSources; i++)
+                if (getSources()[i].table)
                     getSources()[i].table->destroy();
-                }
-            }
-
             // Delete the migration object itself.
             this->TableMigration::~TableMigration();
             std::free(this);
@@ -154,28 +160,26 @@ struct Leapfrog {
         quint64 idx = hash & sizeMask;
         CellGroup* group = table->getCellGroups() + (idx >> 2);
         Cell* cell = group->cells + (idx & 3);
-        Hash probeHash = cell->hash.load();
+        Hash probeHash = cell->hash.load(Relaxed);
 
         if (probeHash == hash) {
             return cell;
         } else if (probeHash == KeyTraits::NullHash) {
             return cell = NULL;
         }
-
         // Follow probe chain for our bucket
-        quint8 delta = group->deltas[idx & 3].load();
+        quint8 delta = group->deltas[idx & 3].load(Relaxed);
         while (delta) {
             idx = (idx + delta) & sizeMask;
             group = table->getCellGroups() + (idx >> 2);
             cell = group->cells + (idx & 3);
-            Hash probeHash = cell->hash.load();
+            Hash probeHash = cell->hash.load(Relaxed);
             // Note: probeHash might actually be NULL due to memory reordering of a concurrent insert,
             // but we don't check for it. We just follow the probe chain.
             if (probeHash == hash) {
                 return cell;
             }
-
-            delta = group->deltas[(idx & 3) + 4].load();
+            delta = group->deltas[(idx & 3) + 4].load(Relaxed);
         }
         // End of probe chain, not found
         return NULL;
@@ -193,14 +197,15 @@ struct Leapfrog {
         // Check hashed cell first, though it may not even belong to the bucket.
         CellGroup* group = table->getCellGroups() + ((idx & sizeMask) >> 2);
         cell = group->cells + (idx & 3);
-        Hash probeHash = cell->hash.load();
+        Hash probeHash = cell->hash.load(Relaxed);
 
         if (probeHash == KeyTraits::NullHash) {
-            if (cell->hash.testAndSetRelaxed(probeHash, hash)) {
+            if (cell->hash.compareExchangeStrong(probeHash, hash, Relaxed)) {
                 // There are no links to set. We're done.
                 return InsertResult_InsertedNew;
+            } else {
+                // Fall through to check if it was the same hash...
             }
-            // Fall through to check if it was the same hash...
         }
 
         if (probeHash == hash) {
@@ -215,27 +220,25 @@ struct Leapfrog {
         followLink:
             prevLink = group->deltas + ((idx & 3) + linkLevel);
             linkLevel = 4;
-            quint8 probeDelta = prevLink->load();
+            quint8 probeDelta = prevLink->load(Relaxed);
 
             if (probeDelta) {
                 idx += probeDelta;
                 // Check the hash for this cell.
                 group = table->getCellGroups() + ((idx & sizeMask) >> 2);
                 cell = group->cells + (idx & 3);
-                probeHash = cell->hash.load();
+                probeHash = cell->hash.load(Relaxed);
 
                 if (probeHash == KeyTraits::NullHash) {
                     // Cell was linked, but hash is not visible yet.
                     // We could avoid this case (and guarantee it's visible) using acquire & release, but instead,
                     // just poll until it becomes visible.
-//                    TURF_TRACE(Leapfrog, 7, "[insertOrFind] race to read hash", quint64(table), idx);
                     do {
-                        probeHash = cell->hash.load();
+                        probeHash = cell->hash.load(Acquire);
                     } while (probeHash == KeyTraits::NullHash);
                 }
 
                 Q_ASSERT(((probeHash ^ hash) & sizeMask) == 0); // Only hashes in same bucket can be linked
-
                 if (probeHash == hash) {
                     return InsertResult_AlreadyFound;
                 }
@@ -250,26 +253,25 @@ struct Leapfrog {
                     idx++;
                     group = table->getCellGroups() + ((idx & sizeMask) >> 2);
                     cell = group->cells + (idx & 3);
-                    probeHash = cell->hash.load();
+                    probeHash = cell->hash.load(Relaxed);
 
                     if (probeHash == KeyTraits::NullHash) {
                         // It's an empty cell. Try to reserve it.
-                        if (cell->hash.testAndSetRelaxed(probeHash, hash)) {
+                        if (cell->hash.compareExchangeStrong(probeHash, hash, Relaxed)) {
                             // Success. We've reserved the cell. Link it to previous cell in same bucket.
                             Q_ASSERT(probeDelta == 0);
                             quint8 desiredDelta = idx - prevLinkIdx;
-                            prevLink->store(desiredDelta);
+                            prevLink->store(desiredDelta, Relaxed);
                             return InsertResult_InsertedNew;
+                        } else {
+                            // Fall through to check if it's the same hash...
                         }
-                        // Fall through to check if it's the same hash...
                     }
-
                     Hash x = (probeHash ^ hash);
                     // Check for same hash.
                     if (!x) {
                         return InsertResult_AlreadyFound;
                     }
-
                     // Check for same bucket.
                     if ((x & sizeMask) == 0) {
                         // Attempt to set the link on behalf of the late-arriving cell.
@@ -277,12 +279,11 @@ struct Leapfrog {
                         // there's no guarantee that our own link chain will be well-formed by the time this function returns.
                         // (Indeed, subsequent lookups sometimes failed during testing, for this exact reason.)
                         quint8 desiredDelta = idx - prevLinkIdx;
-                        prevLink->store(desiredDelta);
+                        prevLink->store(desiredDelta, Relaxed);
                         goto followLink; // Try to follow link chain for the bucket again.
                     }
                     // Continue linear search...
                 }
-
                 // Table is too full to insert.
                 overflowIdx = idx + 1;
                 return InsertResult_Overflow;
@@ -294,21 +295,20 @@ struct Leapfrog {
     {
         // Create new migration by DCLI.
         SimpleJobCoordinator::Job* job = table->jobCoordinator.loadConsume();
-
         if (job) {
-            // New migration already exists, fall trough...
+            // new migration already exists
         } else {
             QMutexLocker guard(&table->mutex);
             job = table->jobCoordinator.loadConsume(); // Non-atomic would be sufficient, but that's OK.
 
             if (job) {
-                // New migration already exists, fall trough (double-chacked)...
+                // new migration already exists (double-checked)
             } else {
                 // Create new migration.
                 TableMigration* migration = TableMigration::create(map, 1);
-                migration->m_unitsRemaining.store(table->getNumMigrationUnits());
+                migration->m_unitsRemaining.storeNonatomic(table->getNumMigrationUnits());
                 migration->getSources()[0].table = table;
-                migration->getSources()[0].sourceIndex.store(0);
+                migration->getSources()[0].sourceIndex.storeNonatomic(0);
                 migration->m_destination = Table::create(nextTableSize);
                 // Publish the new migration.
                 table->jobCoordinator.storeRelease(migration);
@@ -322,24 +322,18 @@ struct Leapfrog {
         quint64 sizeMask = table->sizeMask;
         quint64 idx = overflowIdx - CellsInUseSample;
         quint64 inUseCells = 0;
-
         for (quint64 linearProbesRemaining = CellsInUseSample; linearProbesRemaining > 0; linearProbesRemaining--) {
             CellGroup* group = table->getCellGroups() + ((idx & sizeMask) >> 2);
             Cell* cell = group->cells + (idx & 3);
-            Value value = cell->value.load();
-
+            Value value = cell->value.load(Relaxed);
             if (value == Value(ValueTraits::Redirect)) {
                 // Another thread kicked off the jobCoordinator. The caller will participate upon return.
                 return;
             }
-
-            if (value != Value(ValueTraits::NullValue)) {
+            if (value != Value(ValueTraits::NullValue))
                 inUseCells++;
-            }
-
             idx++;
         }
-
         float inUseRatio = float(inUseCells) / CellsInUseSample;
         float estimatedInUse = (sizeMask + 1) * inUseRatio;
         quint64 nextTableSize = qMax(quint64(InitialSize), roundUpPowerOf2(quint64(estimatedInUse * 2)));
@@ -352,36 +346,33 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
 {
     quint64 srcSizeMask = srcTable->sizeMask;
     quint64 endIdx = qMin(startIdx + TableMigrationUnitSize, srcSizeMask + 1);
-
     // Iterate over source range.
     for (quint64 srcIdx = startIdx; srcIdx < endIdx; srcIdx++) {
         CellGroup* srcGroup = srcTable->getCellGroups() + ((srcIdx & srcSizeMask) >> 2);
         Cell* srcCell = srcGroup->cells + (srcIdx & 3);
         Hash srcHash;
         Value srcValue;
-
         // Fetch the srcHash and srcValue.
         for (;;) {
-            srcHash = srcCell->hash.load();
+            srcHash = srcCell->hash.load(Relaxed);
             if (srcHash == KeyTraits::NullHash) {
                 // An unused cell. Try to put a Redirect marker in its value.
-                srcValue = srcCell->value.compareExchangeRelaxed(Value(ValueTraits::NullValue), Value(ValueTraits::Redirect));
+                srcValue =
+                    srcCell->value.compareExchange(Value(ValueTraits::NullValue), Value(ValueTraits::Redirect), Relaxed);
                 if (srcValue == Value(ValueTraits::Redirect)) {
                     // srcValue is already marked Redirect due to previous incomplete migration.
                     break;
                 }
-
                 if (srcValue == Value(ValueTraits::NullValue)) {
                     break; // Redirect has been placed. Break inner loop, continue outer loop.
                 }
-
                 // Otherwise, somebody just claimed the cell. Read srcHash again...
             } else {
                 // Check for deleted/uninitialized value.
-                srcValue = srcCell->value.load();
+                srcValue = srcCell->value.load(Relaxed);
                 if (srcValue == Value(ValueTraits::NullValue)) {
                     // Try to put a Redirect marker.
-                    if (srcCell->value.testAndSetRelaxed(srcValue, Value(ValueTraits::Redirect))) {
+                    if (srcCell->value.compareExchangeStrong(srcValue, Value(ValueTraits::Redirect), Relaxed)) {
                         break; // Redirect has been placed. Break inner loop, continue outer loop.
                     }
 
@@ -406,7 +397,6 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
                 // and it is only migrated by one thread. Therefore, the hash will never already exist
                 // in the destination table:
                 Q_ASSERT(result != InsertResult_AlreadyFound);
-
                 if (result == InsertResult_Overflow) {
                     // Destination overflow.
                     // This can happen for several reasons. For example, the source table could have
@@ -416,21 +406,19 @@ bool Leapfrog<Map>::TableMigration::migrateRange(Table* srcTable, quint64 startI
                     // Caller will cancel the current migration and begin a new one.
                     return false;
                 }
-
                 // Migrate the old value to the new cell.
                 for (;;) {
                     // Copy srcValue to the destination.
-                    dstCell->value.store(srcValue);
+                    dstCell->value.store(srcValue, Relaxed);
                     // Try to place a Redirect marker in srcValue.
-                    Value doubleCheckedSrcValue = srcCell->value.compareExchangeRelaxed(srcValue, Value(ValueTraits::Redirect));
+                    Value doubleCheckedSrcValue = srcCell->value.compareExchange(srcValue, Value(ValueTraits::Redirect), Relaxed);
                     Q_ASSERT(doubleCheckedSrcValue != Value(ValueTraits::Redirect)); // Only one thread can redirect a cell at a time.
-
                     if (doubleCheckedSrcValue == srcValue) {
                         // No racing writes to the src. We've successfully placed the Redirect marker.
                         // srcValue was non-NULL when we decided to migrate it, but it may have changed to NULL
                         // by a late-arriving erase.
                         if (srcValue == Value(ValueTraits::NullValue)) {
-                            // racing update
+                            // racing update was erase", uptr(srcTable), srcIdx)
                         }
 
                         break;
@@ -451,13 +439,13 @@ template <class Map>
 void Leapfrog<Map>::TableMigration::run()
 {
     // Conditionally increment the shared # of workers.
-    quint64 probeStatus = m_workerStatus.load();
+    quint64 probeStatus = m_workerStatus.load(Relaxed);
     do {
         if (probeStatus & 1) {
             // End flag is already set, so do nothing.
             return;
         }
-    } while (!m_workerStatus.testAndSetRelaxed(probeStatus, probeStatus + 2));
+    } while (!m_workerStatus.compareExchangeWeak(probeStatus, probeStatus + 2, Relaxed, Relaxed));
     // # of workers has been incremented, and the end flag is clear.
     Q_ASSERT((probeStatus & 1) == 0);
 
@@ -466,15 +454,12 @@ void Leapfrog<Map>::TableMigration::run()
         Source& source = getSources()[s];
         // Loop over all migration units in this source table.
         for (;;) {
-            if (m_workerStatus.load() & 1) {
+            if (m_workerStatus.load(Relaxed) & 1) {
                 goto endMigration;
             }
-
-            quint64 startIdx = source.sourceIndex.fetchAndAddRelaxed(TableMigrationUnitSize);
-            if (startIdx >= source.table->sizeMask + 1) {
+            quint64 startIdx = source.sourceIndex.fetchAdd(TableMigrationUnitSize, Relaxed);
+            if (startIdx >= source.table->sizeMask + 1)
                 break; // No more migration units in this table. Try next source table.
-            }
-
             bool overflowed = !migrateRange(source.table, startIdx);
             if (overflowed) {
                 // *** FAILED MIGRATION ***
@@ -486,23 +471,21 @@ void Leapfrog<Map>::TableMigration::run()
                 // we can safely deal with the overflow. Therefore, the thread that detects the failure is often different from
                 // the thread
                 // that deals with it.
-                bool oldOverflowed = m_overflowed.load();
-                m_overflowed.store(overflowed);
+                bool oldOverflowed = m_overflowed.exchange(overflowed, Relaxed);
                 if (oldOverflowed) {
-                    // race to set m_overflowed.
+                    // race to set m_overflowed
                 }
 
-                m_workerStatus.fetchAndOrRelaxed(1);
+                m_workerStatus.fetchOr(1, Relaxed);
                 goto endMigration;
             }
 
-            qint64 prevRemaining = m_unitsRemaining.fetchAndSubRelaxed(1);
+            qint64 prevRemaining = m_unitsRemaining.fetchSub(1, Relaxed);
             Q_ASSERT(prevRemaining > 0);
-
             if (prevRemaining == 1) {
                 // *** SUCCESSFUL MIGRATION ***
                 // That was the last chunk to migrate.
-                m_workerStatus.fetchAndOrRelaxed(1);
+                m_workerStatus.fetchOr(1, Relaxed);
                 goto endMigration;
             }
         }
@@ -510,7 +493,7 @@ void Leapfrog<Map>::TableMigration::run()
 
 endMigration:
     // Decrement the shared # of workers.
-    probeStatus = m_workerStatus.fetchAndSubOrdered(2); // AcquireRelease makes all previous writes visible to the last worker thread.
+    probeStatus = m_workerStatus.fetchSub(2, AcquireRelease); // AcquireRelease makes all previous writes visible to the last worker thread.
     if (probeStatus >= 4) {
         // There are other workers remaining. Return here so that only the very last worker will proceed.
         return;
@@ -519,8 +502,7 @@ endMigration:
     // We're the very last worker thread.
     // Perform the appropriate post-migration step depending on whether the migration succeeded or failed.
     Q_ASSERT(probeStatus == 3);
-    bool overflowed = m_overflowed.load(); // No racing writes at this point
-
+    bool overflowed = m_overflowed.loadNonatomic(); // No racing writes at this point
     if (!overflowed) {
         // The migration succeeded. This is the most likely outcome. Publish the new subtree.
         m_map.publishTableMigration(this);
@@ -533,28 +515,27 @@ endMigration:
         SimpleJobCoordinator::Job* checkedJob = origTable->jobCoordinator.loadConsume();
 
         if (checkedJob != this) {
-            // New TableMigration was already started.
+            // a new TableMigration was already started
         } else {
             TableMigration* migration = TableMigration::create(m_map, m_numSources + 1);
             // Double the destination table size.
             migration->m_destination = Table::create((m_destination->sizeMask + 1) * 2);
             // Transfer source tables to the new migration.
-
             for (quint64 i = 0; i < m_numSources; i++) {
                 migration->getSources()[i].table = getSources()[i].table;
                 getSources()[i].table = NULL;
-                migration->getSources()[i].sourceIndex.store(0);
+                migration->getSources()[i].sourceIndex.storeNonatomic(0);
             }
 
             migration->getSources()[m_numSources].table = m_destination;
-            migration->getSources()[m_numSources].sourceIndex.store(0);
+            migration->getSources()[m_numSources].sourceIndex.storeNonatomic(0);
             // Calculate total number of migration units to move.
             quint64 unitsRemaining = 0;
             for (quint64 s = 0; s < migration->m_numSources; s++) {
                 unitsRemaining += migration->getSources()[s].table->getNumMigrationUnits();
             }
 
-            migration->m_unitsRemaining.store(unitsRemaining);
+            migration->m_unitsRemaining.storeNonatomic(unitsRemaining);
             // Publish the new migration.
             origTable->jobCoordinator.storeRelease(migration);
         }

@@ -1,3 +1,13 @@
+/*------------------------------------------------------------------------
+  Junction: Concurrent data structures in C++
+  Copyright (c) 2016 Jeff Preshing
+  Distributed under the Simplified BSD License.
+  Original location: https://github.com/preshing/junction
+  This software is distributed WITHOUT ANY WARRANTY; without even the
+  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+  See the LICENSE file for more information.
+------------------------------------------------------------------------*/
+
 #ifndef CONCURRENTMAP_LEAPFROG_H
 #define CONCURRENTMAP_LEAPFROG_H
 
@@ -24,7 +34,7 @@ public:
 
     ~ConcurrentMap_Leapfrog()
     {
-        typename Details::Table* table = m_root.load();
+        typename Details::Table* table = m_root.loadNonatomic();
         table->destroy();
     }
 
@@ -33,8 +43,8 @@ public:
     void publishTableMigration(typename Details::TableMigration* migration)
     {
         // There are no racing calls to this function.
-        typename Details::Table* oldRoot = m_root.load();
-        m_root.storeRelease(migration->m_destination);
+        typename Details::Table* oldRoot = m_root.loadNonatomic();
+        m_root.store(migration->m_destination, Release);
         Q_ASSERT(oldRoot == migration->getSources()[0].table);
         // Caller will GC the TableMigration and the source table.
     }
@@ -62,19 +72,18 @@ public:
         {
             Hash hash = KeyTraits::hash(key);
             for (;;) {
-                m_table = m_map.m_root.loadAcquire();
+                m_table = m_map.m_root.load(Consume);
                 m_cell = Details::find(hash, m_table);
                 if (!m_cell) {
                     return;
                 }
 
-                Value value = m_cell->value.loadAcquire();
+                Value value = m_cell->value.load(Consume);
                 if (value != Value(ValueTraits::Redirect)) {
                     // Found an existing value
                     m_value = value;
                     return;
                 }
-
                 // We've encountered a Redirect value. Help finish the migration.
                 m_table->jobCoordinator.participate();
                 // Try again using the latest root.
@@ -86,7 +95,7 @@ public:
         {
             Hash hash = KeyTraits::hash(key);
             for (;;) {
-                m_table = m_map.m_root.loadAcquire();
+                m_table = m_map.m_root.load(Consume);
                 quint64 overflowIdx;
                 switch (Details::insertOrFind(hash, m_table, m_cell, overflowIdx)) { // Modifies m_cell
                 case Details::InsertResult_InsertedNew: {
@@ -95,7 +104,7 @@ public:
                 }
                 case Details::InsertResult_AlreadyFound: {
                     // The hash was already found in the table.
-                    Value value = m_cell->value.loadAcquire();
+                    Value value = m_cell->value.load(Consume);
                     if (value == Value(ValueTraits::Redirect)) {
                         // We've encountered a Redirect value.
                         break; // Help finish the migration.
@@ -133,21 +142,18 @@ public:
             Q_ASSERT(desired != Value(ValueTraits::NullValue));
             Q_ASSERT(desired != Value(ValueTraits::Redirect));
             Q_ASSERT(m_cell); // Cell must have been found or inserted
-
             for (;;) {
                 Value oldValue = m_value;
-                if (m_cell->value.testAndSetOrdered(m_value, desired)) {
+                if (m_cell->value.compareExchangeStrong(m_value, desired, ConsumeRelease)) {
                     // Exchange was successful. Return previous value.
                     Value result = m_value;
                     m_value = desired; // Leave the mutator in a valid state
                     return result;
                 }
-
                 // The CAS failed and m_value has been updated with the latest value.
                 if (m_value != Value(ValueTraits::Redirect)) {
-                    // Detected race to write value.
                     if (oldValue == Value(ValueTraits::NullValue) && m_value != Value(ValueTraits::NullValue)) {
-                        // Racing write inserted new value.
+                        // racing write inserted new value
                     }
                     // There was a racing write (or erase) to this cell.
                     // Pretend we exchanged with ourselves, and just let the racing write win.
@@ -155,18 +161,18 @@ public:
                 }
 
                 // We've encountered a Redirect value. Help finish the migration.
-                Hash hash = m_cell->hash.load();
+                Hash hash = m_cell->hash.load(Relaxed);
                 for (;;) {
                     // Help complete the migration.
                     m_table->jobCoordinator.participate();
                     // Try again in the new table.
-                    m_table = m_map.m_root.loadAcquire();
+                    m_table = m_map.m_root.load(Consume);
                     m_value = Value(ValueTraits::NullValue);
                     quint64 overflowIdx;
 
                     switch (Details::insertOrFind(hash, m_table, m_cell, overflowIdx)) { // Modifies m_cell
                     case Details::InsertResult_AlreadyFound:
-                        m_value = m_cell->value.loadAcquire();
+                        m_value = m_cell->value.load(Consume);
                         if (m_value == Value(ValueTraits::Redirect)) {
                             break;
                         }
@@ -197,8 +203,7 @@ public:
                     return Value(m_value);
                 }
 
-                Q_ASSERT(m_cell); // m_value is non-NullValue, therefore cell must have been found or inserted.
-                if (m_cell->value.testAndSetAcquire(m_value, Value(ValueTraits::NullValue))) {
+                if (m_cell->value.compareExchangeStrong(m_value, Value(ValueTraits::NullValue), Consume)) {
                     // Exchange was successful and a non-NULL value was erased and returned by reference in m_value.
                     Q_ASSERT(m_value != ValueTraits::NullValue); // Implied by the test at the start of the loop.
                     Value result = m_value;
@@ -214,20 +219,19 @@ public:
                 }
 
                 // We've been redirected to a new table.
-                Hash hash = m_cell->hash.load(); // Re-fetch hash
+                Hash hash = m_cell->hash.load(Relaxed); // Re-fetch hash
                 for (;;) {
                     // Help complete the migration.
                     m_table->jobCoordinator.participate();
                     // Try again in the new table.
-                    m_table = m_map.m_root.loadAcquire();
+                    m_table = m_map.m_root.load(Consume);
                     m_cell = Details::find(hash, m_table);
-
                     if (!m_cell) {
                         m_value = Value(ValueTraits::NullValue);
                         return m_value;
                     }
 
-                    m_value = m_cell->value.load();
+                    m_value = m_cell->value.load(Relaxed);
                     if (m_value != Value(ValueTraits::Redirect)) {
                         break;
                     }
@@ -251,13 +255,13 @@ public:
     {
         Hash hash = KeyTraits::hash(key);
         for (;;) {
-            typename Details::Table* table = m_root.loadAcquire();
+            typename Details::Table* table = m_root.load(Consume);
             typename Details::Cell* cell = Details::find(hash, table);
             if (!cell) {
                 return Value(ValueTraits::NullValue);
             }
 
-            Value value = cell->value.loadAcquire();
+            Value value = cell->value.load(Consume);
             if (value != Value(ValueTraits::Redirect)) {
                 return value; // Found an existing value
             }
@@ -300,7 +304,7 @@ public:
         Iterator(ConcurrentMap_Leapfrog& map)
         {
             // Since we've forbidden concurrent inserts (for now), nonatomic would suffice here, but let's plan ahead:
-            m_table = map.m_root.loadAcquire();
+            m_table = map.m_root.load(Consume);
             m_idx = -1;
             next();
         }
@@ -309,20 +313,18 @@ public:
         {
             Q_ASSERT(m_table);
             Q_ASSERT(isValid() || m_idx == -1); // Either the Iterator is already valid, or we've just started iterating.
-
             while (++m_idx <= m_table->sizeMask) {
                 // Index still inside range of table.
                 typename Details::CellGroup* group = m_table->getCellGroups() + (m_idx >> 2);
                 typename Details::Cell* cell = group->cells + (m_idx & 3);
-                m_hash = cell->hash.load();
+                m_hash = cell->hash.load(Relaxed);
 
                 if (m_hash != KeyTraits::NullHash) {
                     // Cell has been reserved.
-                    m_value = cell->value.loadAcquire();
+                    m_value = cell->value.load(Relaxed);
                     Q_ASSERT(m_value != Value(ValueTraits::Redirect));
-                    if (m_value != Value(ValueTraits::NullValue)) {
+                    if (m_value != Value(ValueTraits::NullValue))
                         return; // Yield this cell.
-                    }
                 }
             }
             // That's the end of the map.
