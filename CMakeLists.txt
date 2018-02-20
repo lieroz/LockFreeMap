@@ -7,6 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_CXX_STANDARD 11)
 
 find_package(Qt5Core)
+find_package(Qt5Test)
 
 set(HEADERS
     "Atomic.h"
@@ -19,4 +20,4 @@ set(HEADERS
 
 add_executable(${PROJECT_NAME} "main.cpp" ${HEADERS})
 
-target_link_libraries(${PROJECT_NAME} Qt5::Core pthread)
+target_link_libraries(${PROJECT_NAME} Qt5::Core Qt5::Test pthread)

@@ -72,9 +72,11 @@ public:
     Atomic()
     {
     }
+
     Atomic(T value) : std::atomic<T>(value)
     {
     }
+
     Atomic(const Atomic& other) : std::atomic<T>(other.loadNonatomic())
     {
     }

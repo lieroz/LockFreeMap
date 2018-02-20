@@ -3,8 +3,11 @@
 #include <QThreadPool>
 #include <QDebug>
 
-#define NUM_INTS 60
-#define NUM_CYCLES 1000000
+#define THREAD_COUNT 10
+#define NUM_INTS 100
+#define NUM_CYCLES 100001
+
+QSet<quint64> threadIDs;
 
 struct Foo {
 
@@ -28,7 +31,9 @@ protected:
 
             if (j % 10000 == 0) {
                 DefaultQSBR.update(context);
-                qDebug() << j;
+                quint64 threadID = *((quint64 *) QThread::currentThreadId());
+                threadIDs.insert(threadID);
+                qDebug() << threadID << j;
             }
         }
 
@@ -41,14 +46,16 @@ int main()
     // Create QSBR context for the main thread.
     QSBR::Context context = DefaultQSBR.createContext();
 
-    QThreadPool *pool = new QThreadPool;
-    pool->setMaxThreadCount(10);
+    QThreadPool pool;
+    pool.setMaxThreadCount(THREAD_COUNT);
 
     for (int i = 0; i < NUM_INTS; ++i) {
         MyRunnable *task = new MyRunnable;
         task->setAutoDelete(true);
-        pool->start(task);
+        pool.start(task);
     }
+
+    pool.waitForDone();
 
     // Update the QSBR context for this thread.
     // In a larger application, this should be called periodically, for each thread, at a moment
@@ -58,7 +65,7 @@ int main()
 
     // Destroy the QSBR context for the main thread.
     DefaultQSBR.destroyContext(context);
-    delete pool;
+    Q_ASSERT(threadIDs.size() == THREAD_COUNT);
 
     return 0;
 }
